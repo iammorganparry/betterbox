@@ -17,6 +17,7 @@ import {
   useSidebar,
 } from "~/components/ui/sidebar";
 import { sidebarConfig } from "./config/sidebar";
+import Link from "next/link";
 
 export function AppSidebar({
   children,
@@ -27,7 +28,7 @@ export function AppSidebar({
   return (
     <Sidebar
       collapsible="icon"
-      className="overflow-hidden *:data-[sidebar=sidebar]:flex-row"
+      className="w-screen overflow-hidden *:data-[sidebar=sidebar]:flex-row"
       {...props}
     >
       {/* This is the first sidebar */}
@@ -59,22 +60,24 @@ export function AppSidebar({
             <SidebarGroupContent className="px-1.5 md:px-0">
               <SidebarMenu>
                 {sidebarConfig.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      tooltip={{
-                        children: item.title,
-                        hidden: false,
-                      }}
-                      onClick={() => {
-                        setOpen(true);
-                      }}
-                      isActive={item.isActive}
-                      className="px-2.5 md:px-2"
-                    >
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <Link href={item.url} key={item.title}>
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        tooltip={{
+                          children: item.title,
+                          hidden: false,
+                        }}
+                        onClick={() => {
+                          setOpen(true);
+                        }}
+                        isActive={item.isActive}
+                        className="px-2.5 md:px-2"
+                      >
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </Link>
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>

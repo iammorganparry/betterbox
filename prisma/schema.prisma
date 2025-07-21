@@ -1,65 +1,155 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
 generator client {
-    provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["queryCompiler", "driverAdapters"]
+  output          = "../generated/prisma"
 }
 
 datasource db {
-    provider = "postgresql"
-    url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    @@index([name])
+  @@index([name])
 }
 
 model User {
-    id          String        @id @default(uuid())
-    name        String
-    email       String        @unique
-    password    String
-    is_deleted  Boolean       @default(false)
-    created_at  DateTime      @default(now())
-    updated_at  DateTime      @updatedAt
-    Message     Message[]
-    ProfileView ProfileView[]
+  id             String           @id @default(uuid())
+  clerk_id       String           @unique // Clerk user ID
+  email          String           @unique
+  first_name     String?
+  last_name      String?
+  image_url      String?
+  is_deleted     Boolean          @default(false)
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+  Message        Message[]
+  ProfileView    ProfileView[]
+  UnipileAccount UnipileAccount[]
 }
 
 // Represents a linkedin user profile
 model Profile {
-    id           String  @id @default(uuid())
-    linkedin_urn String  @unique
-    linkedin_url String
-    is_deleted   Boolean @default(false)
+  id           String  @id @default(uuid())
+  linkedin_urn String  @unique
+  linkedin_url String
+  is_deleted   Boolean @default(false)
 }
 
 // Represents a view of a user's linkedin profile
 model ProfileView {
-    id         String   @id @default(uuid())
-    user       User     @relation(fields: [userId], references: [id])
-    userId     String
-    profileId  String
-    is_deleted Boolean  @default(false)
-    created_at DateTime @default(now())
-    updated_at DateTime @updatedAt
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [user_id], references: [id])
+  user_id    String
+  profile_id String
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 }
 
 // Represents a linkedin direct message
 model Message {
-    id         String   @id @default(uuid())
-    user       User     @relation(fields: [userId], references: [id])
-    userId     String
-    message    String
-    is_read    Boolean  @default(false)
-    is_deleted Boolean  @default(false)
-    created_at DateTime @default(now())
-    updated_at DateTime @updatedAt
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [user_id], references: [id])
+  user_id    String
+  message    String
+  is_read    Boolean  @default(false)
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-    @@index([userId])
+  @@index([user_id])
+}
+
+// Represents a connected Unipile account (LinkedIn, etc.)
+model UnipileAccount {
+  id         String   @id @default(uuid())
+  user       User     @relation(fields: [user_id], references: [id])
+  user_id    String
+  provider   String // "linkedin", "whatsapp", etc.
+  account_id String // Unipile account ID
+  status     String   @default("connected") // "connected", "disconnected", "error"
+  is_deleted Boolean  @default(false)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  UnipileMessage UnipileMessage[]
+  UnipileContact UnipileContact[]
+
+  @@unique([user_id, provider, account_id])
+  @@index([user_id])
+}
+
+// Represents messages from Unipile (LinkedIn messages, etc.)
+model UnipileMessage {
+  id                 String         @id @default(uuid())
+  unipile_account    UnipileAccount @relation(fields: [unipile_account_id], references: [id])
+  unipile_account_id String
+  external_id        String // Message ID from the provider (LinkedIn, etc.)
+  chat_id            String? // Chat/conversation ID
+  sender_id          String? // Sender's provider ID
+  recipient_id       String? // Recipient's provider ID
+  message_type       String         @default("text") // "text", "file", "image", etc.
+  content            String? // Message content
+  is_read            Boolean        @default(false)
+  is_outgoing        Boolean        @default(false) // true if sent by user, false if received
+  sent_at            DateTime? // When the message was sent
+  is_deleted         Boolean        @default(false)
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+
+  @@unique([unipile_account_id, external_id])
+  @@index([unipile_account_id])
+  @@index([chat_id])
+}
+
+// Represents contacts/profiles from Unipile
+model UnipileContact {
+  id                 String         @id @default(uuid())
+  unipile_account    UnipileAccount @relation(fields: [unipile_account_id], references: [id])
+  unipile_account_id String
+  external_id        String // Contact's provider ID
+  provider_url       String? // LinkedIn profile URL, etc.
+  full_name          String?
+  first_name         String?
+  last_name          String?
+  headline           String? // Job title, bio, etc.
+  profile_image_url  String?
+  last_interaction   DateTime? // Last message or interaction
+  is_connection      Boolean        @default(false) // Connected on LinkedIn, etc.
+  is_deleted         Boolean        @default(false)
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+
+  @@unique([unipile_account_id, external_id])
+  @@index([unipile_account_id])
+}
+
+// Represents profile views synced from LinkedIn
+model UnipileProfileView {
+  id                String   @id @default(uuid())
+  user_id           String
+  viewer_profile_id String? // LinkedIn profile ID of viewer
+  viewer_name       String?
+  viewer_headline   String?
+  viewer_image_url  String?
+  viewed_at         DateTime
+  provider          String   @default("linkedin")
+  is_deleted        Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@index([user_id])
+  @@index([viewed_at])
 }

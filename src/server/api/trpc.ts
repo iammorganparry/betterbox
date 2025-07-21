@@ -12,6 +12,13 @@ import { ZodError } from "zod";
 import { auth } from "@clerk/nextjs/server";
 
 import { db } from "~/server/db";
+import { UserService } from "~/services/db/user.service";
+import { UnipileAccountService } from "~/services/db/unipile-account.service";
+import { UnipileMessageService } from "~/services/db/unipile-message.service";
+import { UnipileContactService } from "~/services/db/unipile-contact.service";
+import { RealtimeService } from "~/services/realtime.service";
+import { LinkedInAuthService } from "~/services/linkedin-auth.service";
+import { HistoricalSyncService } from "~/services/unipile/historical-sync";
 
 /**
  * 1. CONTEXT
@@ -27,10 +34,24 @@ import { db } from "~/server/db";
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
 	const authResult = await auth();
+
+	// Initialize all services with dependency injection
+	const services = {
+		db,
+		userService: new UserService(db),
+		unipileAccountService: new UnipileAccountService(db),
+		unipileMessageService: new UnipileMessageService(db),
+		unipileContactService: new UnipileContactService(db),
+		realtimeService: new RealtimeService(db),
+		linkedinAuthService: new LinkedInAuthService(),
+		historicalSyncService: new HistoricalSyncService(db),
+	};
+
 	return {
 		db,
 		auth: authResult,
 		userId: authResult.userId,
+		services,
 		...opts,
 	};
 };
@@ -125,6 +146,7 @@ const enforceUserIsAuthed = t.middleware(({ ctx, next }) => {
 			userId: ctx.userId,
 			auth: ctx.auth,
 			db: ctx.db,
+			services: ctx.services,
 		},
 	});
 });

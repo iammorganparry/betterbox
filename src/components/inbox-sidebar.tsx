@@ -1,3 +1,4 @@
+"use client";
 import { ArchiveX, Inbox, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Label } from "~/components/ui/label";

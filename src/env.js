@@ -12,6 +12,9 @@ export const env = createEnv({
 			.enum(["development", "test", "production"])
 			.default("development"),
 		CLERK_SECRET_KEY: z.string().min(1),
+		UNIPILE_API_KEY: z.string().min(1),
+		UNIPILE_DSN: z.string().min(1),
+		UNIPILE_WEBHOOK_SECRET: z.string().optional(),
 	},
 
 	/**
@@ -31,6 +34,9 @@ export const env = createEnv({
 		DATABASE_URL: process.env.DATABASE_URL,
 		NODE_ENV: process.env.NODE_ENV,
 		CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
+		UNIPILE_API_KEY: process.env.UNIPILE_API_KEY,
+		UNIPILE_DSN: process.env.UNIPILE_DSN,
+		UNIPILE_WEBHOOK_SECRET: process.env.UNIPILE_WEBHOOK_SECRET,
 		NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
 			process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
 	},
