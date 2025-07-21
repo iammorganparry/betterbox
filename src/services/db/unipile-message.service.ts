@@ -1,99 +1,396 @@
-import { db } from "~/server/db";
-import type { Prisma, PrismaClient } from "generated/prisma";
+import type { Prisma, PrismaClient } from "../../../generated/prisma";
 import type {
 	UnipileMessage,
-	UnipileMessageCreateInput,
-	UnipileMessageUpdateInput,
-	UnipileMessageType,
-} from "~/types/unipile-message";
+	UnipileMessageAttachment,
+} from "../../../generated/prisma";
+
+// Use Prisma's generated types instead of custom interfaces
+export type CreateMessageData = Prisma.UnipileMessageCreateInput;
+export type UpdateMessageData = Prisma.UnipileMessageUpdateInput;
+export type CreateAttachmentData = Prisma.UnipileMessageAttachmentCreateInput;
+export type UpdateAttachmentData = Prisma.UnipileMessageAttachmentUpdateInput;
+
+// Message with various include options
+export type MessageWithAttachments = Prisma.UnipileMessageGetPayload<{
+	include: { UnipileMessageAttachment: true };
+}>;
+
+export type MessageWithChat = Prisma.UnipileMessageGetPayload<{
+	include: { chat: true };
+}>;
+
+export type MessageWithAccount = Prisma.UnipileMessageGetPayload<{
+	include: { unipile_account: true };
+}>;
+
+export type MessageWithDetails = Prisma.UnipileMessageGetPayload<{
+	include: {
+		UnipileMessageAttachment: true;
+		chat: {
+			include: {
+				UnipileChatAttendee: true;
+			};
+		};
+		unipile_account: {
+			include: { user: true };
+		};
+	};
+}>;
+
+export interface FindMessagesOptions {
+	include_attachments?: boolean;
+	include_chat?: boolean;
+	include_account?: boolean;
+	include_deleted?: boolean;
+	limit?: number;
+	offset?: number;
+	order_by?: "created_at" | "updated_at" | "sent_at";
+	order_direction?: "asc" | "desc";
+	message_type?: string;
+	is_outgoing?: boolean;
+	is_read?: boolean;
+}
 
 export class UnipileMessageService {
 	constructor(private readonly db: PrismaClient) {}
 
 	/**
-	 * Find message by ID
+	 * Find message by unique constraint
 	 */
-	public async findById(id: string): Promise<UnipileMessage | null> {
-		return await this.db.unipileMessage.findUnique({
-			where: { id },
-		});
-	}
-
-	/**
-	 * Find message by external ID
-	 */
-	public async findByExternalId(
-		accountId: string,
+	async findMessageByExternalId(
+		unipileAccountId: string,
 		externalId: string,
+		includeDeleted = false,
 	): Promise<UnipileMessage | null> {
-		return await this.db.unipileMessage.findUnique({
+		return await this.db.unipileMessage.findFirst({
 			where: {
-				unipile_account_id_external_id: {
-					unipile_account_id: accountId,
-					external_id: externalId,
-				},
+				unipile_account_id: unipileAccountId,
+				external_id: externalId,
+				...(includeDeleted ? {} : { is_deleted: false }),
 			},
 		});
 	}
 
 	/**
-	 * Create a new message
+	 * Create or update a message
 	 */
-	public async create(
-		data: UnipileMessageCreateInput,
-	): Promise<UnipileMessage> {
-		return await this.db.unipileMessage.create({
-			data,
-		});
-	}
-
-	/**
-	 * Update message by ID
-	 */
-	public async update(
-		id: string,
-		data: UnipileMessageUpdateInput,
-	): Promise<UnipileMessage> {
-		return await this.db.unipileMessage.update({
-			where: { id },
-			data: {
-				...data,
-				updated_at: new Date(),
-			},
-		});
-	}
-
-	/**
-	 * Upsert message by external ID
-	 * Used heavily in webhook and sync processing
-	 */
-	public async upsertByExternalId(
-		accountId: string,
+	async upsertMessage(
+		unipileAccountId: string,
 		externalId: string,
-		createData: UnipileMessageCreateInput,
-		updateData?: UnipileMessageUpdateInput,
+		updateData: Partial<UpdateMessageData>,
+		createData?: Partial<Prisma.UnipileMessageCreateWithoutUnipile_accountInput>,
 	): Promise<UnipileMessage> {
-		return await db.unipileMessage.upsert({
+		return await this.db.unipileMessage.upsert({
 			where: {
 				unipile_account_id_external_id: {
-					unipile_account_id: accountId,
+					unipile_account_id: unipileAccountId,
 					external_id: externalId,
 				},
 			},
-			create: createData,
 			update: {
 				...updateData,
 				updated_at: new Date(),
 			},
+			create: {
+				unipile_account: {
+					connect: { id: unipileAccountId },
+				},
+				external_id: externalId,
+				message_type: "text",
+				is_read: false,
+				is_outgoing: false,
+				...createData,
+			},
 		});
 	}
 
 	/**
-	 * Soft delete message
+	 * Get messages for a specific chat
 	 */
-	public async softDelete(id: string): Promise<UnipileMessage> {
+	async getMessagesByChat(
+		chatId: string,
+		options: FindMessagesOptions = {},
+	): Promise<UnipileMessage[]> {
+		const {
+			include_attachments = false,
+			include_chat = false,
+			include_account = false,
+			include_deleted = false,
+			limit,
+			offset,
+			order_by = "sent_at",
+			order_direction = "asc",
+			message_type,
+			is_outgoing,
+			is_read,
+		} = options;
+
+		return await this.db.unipileMessage.findMany({
+			where: {
+				chat_id: chatId,
+				...(include_deleted ? {} : { is_deleted: false }),
+				...(message_type ? { message_type } : {}),
+				...(is_outgoing !== undefined ? { is_outgoing } : {}),
+				...(is_read !== undefined ? { is_read } : {}),
+			},
+			include: {
+				...(include_attachments
+					? {
+							UnipileMessageAttachment: {
+								where: { is_deleted: false },
+							},
+						}
+					: {}),
+				...(include_chat ? { chat: true } : {}),
+				...(include_account ? { unipile_account: true } : {}),
+			},
+			orderBy: { [order_by]: order_direction },
+			...(limit ? { take: limit } : {}),
+			...(offset ? { skip: offset } : {}),
+		});
+	}
+
+	/**
+	 * Get messages for a Unipile account
+	 */
+	async getMessagesByAccount(
+		unipileAccountId: string,
+		options: FindMessagesOptions = {},
+	): Promise<UnipileMessage[]> {
+		const {
+			include_attachments = false,
+			include_chat = false,
+			include_deleted = false,
+			limit,
+			offset,
+			order_by = "sent_at",
+			order_direction = "desc",
+			message_type,
+			is_outgoing,
+			is_read,
+		} = options;
+
+		return await this.db.unipileMessage.findMany({
+			where: {
+				unipile_account_id: unipileAccountId,
+				...(include_deleted ? {} : { is_deleted: false }),
+				...(message_type ? { message_type } : {}),
+				...(is_outgoing !== undefined ? { is_outgoing } : {}),
+				...(is_read !== undefined ? { is_read } : {}),
+			},
+			include: {
+				...(include_attachments
+					? {
+							UnipileMessageAttachment: {
+								where: { is_deleted: false },
+							},
+						}
+					: {}),
+				...(include_chat ? { chat: true } : {}),
+			},
+			orderBy: { [order_by]: order_direction },
+			...(limit ? { take: limit } : {}),
+			...(offset ? { skip: offset } : {}),
+		});
+	}
+
+	/**
+	 * Get messages for a user across all accounts
+	 */
+	async getMessagesByUser(
+		userId: string,
+		provider?: string,
+		options: FindMessagesOptions = {},
+	): Promise<UnipileMessage[]> {
+		const {
+			include_attachments = false,
+			include_chat = false,
+			include_account = false,
+			include_deleted = false,
+			limit,
+			offset,
+			order_by = "sent_at",
+			order_direction = "desc",
+			message_type,
+			is_outgoing,
+			is_read,
+		} = options;
+
+		return await this.db.unipileMessage.findMany({
+			where: {
+				unipile_account: {
+					user_id: userId,
+					...(provider ? { provider } : {}),
+					is_deleted: false,
+				},
+				...(include_deleted ? {} : { is_deleted: false }),
+				...(message_type ? { message_type } : {}),
+				...(is_outgoing !== undefined ? { is_outgoing } : {}),
+				...(is_read !== undefined ? { is_read } : {}),
+			},
+			include: {
+				...(include_attachments
+					? {
+							UnipileMessageAttachment: {
+								where: { is_deleted: false },
+							},
+						}
+					: {}),
+				...(include_chat ? { chat: true } : {}),
+				...(include_account ? { unipile_account: true } : {}),
+			},
+			orderBy: { [order_by]: order_direction },
+			...(limit ? { take: limit } : {}),
+			...(offset ? { skip: offset } : {}),
+		});
+	}
+
+	/**
+	 * Mark message as read
+	 */
+	async markMessageAsRead(messageId: string): Promise<UnipileMessage> {
 		return await this.db.unipileMessage.update({
-			where: { id },
+			where: { id: messageId },
+			data: {
+				is_read: true,
+				updated_at: new Date(),
+			},
+		});
+	}
+
+	/**
+	 * Mark multiple messages as read
+	 */
+	async markMessagesAsRead(messageIds: string[]): Promise<Prisma.BatchPayload> {
+		return await this.db.unipileMessage.updateMany({
+			where: {
+				id: { in: messageIds },
+				is_deleted: false,
+			},
+			data: {
+				is_read: true,
+				updated_at: new Date(),
+			},
+		});
+	}
+
+	/**
+	 * Mark all chat messages as read
+	 */
+	async markChatMessagesAsRead(chatId: string): Promise<Prisma.BatchPayload> {
+		return await this.db.unipileMessage.updateMany({
+			where: {
+				chat_id: chatId,
+				is_deleted: false,
+				is_read: false,
+			},
+			data: {
+				is_read: true,
+				updated_at: new Date(),
+			},
+		});
+	}
+
+	/**
+	 * Get unread message count for a chat
+	 */
+	async getUnreadMessageCount(chatId: string): Promise<number> {
+		return await this.db.unipileMessage.count({
+			where: {
+				chat_id: chatId,
+				is_deleted: false,
+				is_read: false,
+				is_outgoing: false, // Only count incoming messages
+			},
+		});
+	}
+
+	/**
+	 * Get unread message count for a user
+	 */
+	async getUnreadMessageCountByUser(
+		userId: string,
+		provider?: string,
+	): Promise<number> {
+		return await this.db.unipileMessage.count({
+			where: {
+				unipile_account: {
+					user_id: userId,
+					...(provider ? { provider } : {}),
+					is_deleted: false,
+				},
+				is_deleted: false,
+				is_read: false,
+				is_outgoing: false,
+			},
+		});
+	}
+
+	/**
+	 * Search messages by content
+	 */
+	async searchMessages(
+		unipileAccountId: string,
+		searchTerm: string,
+		options: FindMessagesOptions = {},
+	): Promise<UnipileMessage[]> {
+		const {
+			limit = 50,
+			include_chat = true,
+			include_attachments = false,
+		} = options;
+
+		return await this.db.unipileMessage.findMany({
+			where: {
+				unipile_account_id: unipileAccountId,
+				is_deleted: false,
+				content: {
+					contains: searchTerm,
+					mode: "insensitive",
+				},
+			},
+			include: {
+				...(include_chat ? { chat: true } : {}),
+				...(include_attachments
+					? {
+							UnipileMessageAttachment: {
+								where: { is_deleted: false },
+							},
+						}
+					: {}),
+			},
+			orderBy: { sent_at: "desc" },
+			take: limit,
+		});
+	}
+
+	/**
+	 * Get latest message for each chat
+	 */
+	async getLatestMessagesPerChat(
+		unipileAccountId: string,
+		limit = 20,
+	): Promise<UnipileMessage[]> {
+		// Get the latest message for each chat
+		const latestMessages = await this.db.$queryRaw<UnipileMessage[]>`
+			SELECT DISTINCT ON (chat_id) *
+			FROM "UnipileMessage"
+			WHERE unipile_account_id = ${unipileAccountId}
+			  AND is_deleted = false
+			  AND chat_id IS NOT NULL
+			ORDER BY chat_id, sent_at DESC
+			LIMIT ${limit}
+		`;
+
+		return latestMessages;
+	}
+
+	/**
+	 * Mark message as deleted (soft delete)
+	 */
+	async markMessageAsDeleted(messageId: string): Promise<UnipileMessage> {
+		return await this.db.unipileMessage.update({
+			where: { id: messageId },
 			data: {
 				is_deleted: true,
 				updated_at: new Date(),
@@ -102,311 +399,256 @@ export class UnipileMessageService {
 	}
 
 	/**
-	 * Get messages for an account
+	 * Get message statistics for a chat
 	 */
-	public async findByAccountId(
-		accountId: string,
-		options: {
-			limit?: number;
-			offset?: number;
-			includeDeleted?: boolean;
-			chatId?: string;
-			isOutgoing?: boolean;
-		} = {},
-	) {
-		const {
-			limit = 50,
-			offset = 0,
-			includeDeleted = false,
-			chatId,
-			isOutgoing,
-		} = options;
-
-		return await db.unipileMessage.findMany({
-			where: {
-				unipile_account_id: accountId,
-				...(includeDeleted ? {} : { is_deleted: false }),
-				...(chatId ? { chat_id: chatId } : {}),
-				...(isOutgoing !== undefined ? { is_outgoing: isOutgoing } : {}),
-			},
-			orderBy: { sent_at: "desc" },
-			skip: offset,
-			take: limit,
-		});
-	}
-
-	/**
-	 * Get messages for a chat
-	 */
-	public async findByChatId(
-		chatId: string,
-		options: {
-			limit?: number;
-			offset?: number;
-			includeDeleted?: boolean;
-		} = {},
-	) {
-		const { limit = 100, offset = 0, includeDeleted = false } = options;
-
-		return await db.unipileMessage.findMany({
-			where: {
-				chat_id: chatId,
-				...(includeDeleted ? {} : { is_deleted: false }),
-			},
-			orderBy: { sent_at: "asc" }, // Chronological order for chat
-			skip: offset,
-			take: limit,
-		});
-	}
-
-	/**
-	 * Get message with account details
-	 */
-	public async findWithAccount(id: string) {
-		return await this.db.unipileMessage.findUnique({
-			where: { id },
-			include: {
-				unipile_account: {
-					include: {
-						user: true,
-					},
+	async getChatMessageStats(chatId: string): Promise<{
+		totalMessages: number;
+		outgoingMessages: number;
+		incomingMessages: number;
+		unreadMessages: number;
+		lastMessageAt: Date | null;
+	}> {
+		const [stats] = await this.db.$queryRaw<
+			[
+				{
+					total_messages: number;
+					outgoing_messages: number;
+					incoming_messages: number;
+					unread_messages: number;
+					last_message_at: Date | null;
 				},
-			},
-		});
-	}
-
-	/**
-	 * Mark messages as read
-	 */
-	public async markAsRead(messageIds: string[]): Promise<void> {
-		await this.db.unipileMessage.updateMany({
-			where: {
-				id: { in: messageIds },
-			},
-			data: {
-				is_read: true,
-				updated_at: new Date(),
-			},
-		});
-	}
-
-	/**
-	 * Mark all messages in chat as read
-	 */
-	public async markChatAsRead(
-		chatId: string,
-		accountId: string,
-	): Promise<void> {
-		await db.unipileMessage.updateMany({
-			where: {
-				chat_id: chatId,
-				unipile_account_id: accountId,
-				is_read: false,
-			},
-			data: {
-				is_read: true,
-				updated_at: new Date(),
-			},
-		});
-	}
-
-	/**
-	 * Get unread message count for account
-	 */
-	public async getUnreadCount(accountId: string): Promise<number> {
-		return await this.db.unipileMessage.count({
-			where: {
-				unipile_account_id: accountId,
-				is_read: false,
-				is_deleted: false,
-				is_outgoing: false, // Only count incoming messages
-			},
-		});
-	}
-
-	/**
-	 * Get recent messages for user (across all accounts)
-	 */
-	public async getRecentForUser(
-		userId: string,
-		options: {
-			limit?: number;
-			includeOutgoing?: boolean;
-		} = {},
-	) {
-		const { limit = 20, includeOutgoing = true } = options;
-
-		return await db.unipileMessage.findMany({
-			where: {
-				unipile_account: {
-					user_id: userId,
-					is_deleted: false,
-				},
-				is_deleted: false,
-				...(includeOutgoing ? {} : { is_outgoing: false }),
-			},
-			include: {
-				unipile_account: {
-					select: {
-						provider: true,
-						account_id: true,
-					},
-				},
-			},
-			orderBy: { sent_at: "desc" },
-			take: limit,
-		});
-	}
-
-	/**
-	 * Search messages by content
-	 */
-	public async search(
-		accountId: string,
-		query: string,
-		options: {
-			limit?: number;
-			offset?: number;
-		} = {},
-	) {
-		const { limit = 50, offset = 0 } = options;
-
-		return await db.unipileMessage.findMany({
-			where: {
-				unipile_account_id: accountId,
-				is_deleted: false,
-				content: {
-					contains: query,
-					mode: "insensitive",
-				},
-			},
-			orderBy: { sent_at: "desc" },
-			skip: offset,
-			take: limit,
-		});
-	}
-
-	/**
-	 * Get message statistics for account
-	 */
-	public async getAccountStats(accountId: string) {
-		const [total, outgoing, incoming, unread] = await Promise.all([
-			db.unipileMessage.count({
-				where: { unipile_account_id: accountId, is_deleted: false },
-			}),
-			db.unipileMessage.count({
-				where: {
-					unipile_account_id: accountId,
-					is_deleted: false,
-					is_outgoing: true,
-				},
-			}),
-			db.unipileMessage.count({
-				where: {
-					unipile_account_id: accountId,
-					is_deleted: false,
-					is_outgoing: false,
-				},
-			}),
-			db.unipileMessage.count({
-				where: {
-					unipile_account_id: accountId,
-					is_deleted: false,
-					is_read: false,
-					is_outgoing: false,
-				},
-			}),
-		]);
+			]
+		>`
+			SELECT 
+				COUNT(*)::int as total_messages,
+				COUNT(*) FILTER (WHERE is_outgoing = true)::int as outgoing_messages,
+				COUNT(*) FILTER (WHERE is_outgoing = false)::int as incoming_messages,
+				COUNT(*) FILTER (WHERE is_read = false AND is_outgoing = false)::int as unread_messages,
+				MAX(sent_at) as last_message_at
+			FROM "UnipileMessage"
+			WHERE chat_id = ${chatId} AND is_deleted = false
+		`;
 
 		return {
-			total,
-			outgoing,
-			incoming,
-			unread,
+			totalMessages: stats?.total_messages || 0,
+			outgoingMessages: stats?.outgoing_messages || 0,
+			incomingMessages: stats?.incoming_messages || 0,
+			unreadMessages: stats?.unread_messages || 0,
+			lastMessageAt: stats?.last_message_at || null,
 		};
 	}
 
 	/**
-	 * List messages with pagination
+	 * ATTACHMENT OPERATIONS
 	 */
-	public async list(
-		options: {
-			page?: number;
-			limit?: number;
-			accountId?: string;
-			chatId?: string;
-			messageType?: UnipileMessageType;
-			isOutgoing?: boolean;
-			isRead?: boolean;
-			includeDeleted?: boolean;
-		} = {},
-	) {
-		const {
-			page = 1,
-			limit = 50,
-			accountId,
-			chatId,
-			messageType,
-			isOutgoing,
-			isRead,
-			includeDeleted = false,
-		} = options;
-		const skip = (page - 1) * limit;
 
-		const whereClause: Prisma.UnipileMessageWhereInput = {
-			...(includeDeleted ? {} : { is_deleted: false }),
-			...(accountId ? { unipile_account_id: accountId } : {}),
-			...(chatId ? { chat_id: chatId } : {}),
-			...(messageType ? { message_type: messageType } : {}),
-			...(isOutgoing !== undefined ? { is_outgoing: isOutgoing } : {}),
-			...(isRead !== undefined ? { is_read: isRead } : {}),
-		};
+	/**
+	 * Find attachment by unique constraint
+	 */
+	async findAttachmentByExternalId(
+		messageId: string,
+		externalId: string,
+		includeDeleted = false,
+	): Promise<UnipileMessageAttachment | null> {
+		return await this.db.unipileMessageAttachment.findFirst({
+			where: {
+				message_id: messageId,
+				external_id: externalId,
+				...(includeDeleted ? {} : { is_deleted: false }),
+			},
+		});
+	}
 
-		const [messages, total] = await Promise.all([
-			db.unipileMessage.findMany({
-				where: whereClause,
-				skip,
-				take: limit,
-				orderBy: { sent_at: "desc" },
-				include: {
-					unipile_account: {
-						select: {
-							provider: true,
-							account_id: true,
-							user: {
-								select: {
-									id: true,
-									email: true,
-								},
-							},
+	/**
+	 * Create or update an attachment
+	 */
+	async upsertAttachment(
+		messageId: string,
+		externalId: string,
+		updateData: Partial<UpdateAttachmentData>,
+		createData?: Partial<Prisma.UnipileMessageAttachmentCreateWithoutMessageInput>,
+	): Promise<UnipileMessageAttachment> {
+		return await this.db.unipileMessageAttachment.upsert({
+			where: {
+				message_id_external_id: {
+					message_id: messageId,
+					external_id: externalId,
+				},
+			},
+			update: {
+				...updateData,
+				updated_at: new Date(),
+			},
+			create: {
+				message: {
+					connect: { id: messageId },
+				},
+				external_id: externalId,
+				attachment_type: "file",
+				...createData,
+			},
+		});
+	}
+
+	/**
+	 * Get attachments for a message
+	 */
+	async getAttachmentsByMessage(
+		messageId: string,
+		includeDeleted = false,
+	): Promise<UnipileMessageAttachment[]> {
+		return await this.db.unipileMessageAttachment.findMany({
+			where: {
+				message_id: messageId,
+				...(includeDeleted ? {} : { is_deleted: false }),
+			},
+			orderBy: { created_at: "asc" },
+		});
+	}
+
+	/**
+	 * Get attachments for a chat
+	 */
+	async getAttachmentsByChat(
+		chatId: string,
+		attachmentType?: string,
+		limit = 50,
+	): Promise<
+		Prisma.UnipileMessageAttachmentGetPayload<{
+			include: { message: true };
+		}>[]
+	> {
+		return await this.db.unipileMessageAttachment.findMany({
+			where: {
+				message: {
+					chat_id: chatId,
+					is_deleted: false,
+				},
+				is_deleted: false,
+				...(attachmentType ? { attachment_type: attachmentType } : {}),
+			},
+			include: {
+				message: true,
+			},
+			orderBy: { created_at: "desc" },
+			take: limit,
+		});
+	}
+
+	/**
+	 * Mark attachment as deleted (soft delete)
+	 */
+	async markAttachmentAsDeleted(
+		attachmentId: string,
+	): Promise<UnipileMessageAttachment> {
+		return await this.db.unipileMessageAttachment.update({
+			where: { id: attachmentId },
+			data: {
+				is_deleted: true,
+				updated_at: new Date(),
+			},
+		});
+	}
+
+	/**
+	 * Bulk create attachments
+	 */
+	async bulkCreateAttachments(
+		attachmentsData: Prisma.UnipileMessageAttachmentCreateManyInput[],
+	): Promise<Prisma.BatchPayload> {
+		return await this.db.unipileMessageAttachment.createMany({
+			data: attachmentsData,
+			skipDuplicates: true,
+		});
+	}
+
+	/**
+	 * Get message with full details (attachments, chat, account)
+	 */
+	async getMessageWithDetails(
+		messageId: string,
+	): Promise<MessageWithDetails | null> {
+		return await this.db.unipileMessage.findUnique({
+			where: { id: messageId },
+			include: {
+				UnipileMessageAttachment: {
+					where: { is_deleted: false },
+				},
+				chat: {
+					include: {
+						UnipileChatAttendee: {
+							where: { is_deleted: false },
 						},
 					},
 				},
-			}),
-			db.unipileMessage.count({ where: whereClause }),
-		]);
-
-		return {
-			messages,
-			pagination: {
-				page,
-				limit,
-				total,
-				pages: Math.ceil(total / limit),
+				unipile_account: {
+					include: { user: true },
+				},
 			},
-		};
+		});
 	}
 
 	/**
-	 * Batch create messages (for bulk sync)
+	 * Get message thread (messages around a specific message)
 	 */
-	public async batchCreate(
-		messages: Prisma.UnipileMessageCreateManyInput[],
-	): Promise<void> {
-		// Use createMany for better performance
-		await db.unipileMessage.createMany({
-			data: messages,
-			skipDuplicates: true, // Skip if external_id already exists
+	async getMessageThread(
+		messageId: string,
+		contextCount = 5,
+	): Promise<{
+		message: MessageWithAttachments;
+		previousMessages: MessageWithAttachments[];
+		nextMessages: MessageWithAttachments[];
+	}> {
+		const message = await this.db.unipileMessage.findUnique({
+			where: { id: messageId },
+			include: {
+				UnipileMessageAttachment: {
+					where: { is_deleted: false },
+				},
+			},
 		});
+
+		if (!message || !message.chat_id) {
+			throw new Error(`Message not found: ${messageId}`);
+		}
+
+		const [previousMessages, nextMessages] = await Promise.all([
+			// Get messages before this one
+			this.db.unipileMessage.findMany({
+				where: {
+					chat_id: message.chat_id,
+					...(message.sent_at ? { sent_at: { lt: message.sent_at } } : {}),
+					is_deleted: false,
+				},
+				orderBy: { sent_at: "desc" },
+				take: contextCount,
+				include: {
+					UnipileMessageAttachment: {
+						where: { is_deleted: false },
+					},
+				},
+			}),
+			// Get messages after this one
+			this.db.unipileMessage.findMany({
+				where: {
+					chat_id: message.chat_id,
+					...(message.sent_at ? { sent_at: { gt: message.sent_at } } : {}),
+					is_deleted: false,
+				},
+				orderBy: { sent_at: "asc" },
+				take: contextCount,
+				include: {
+					UnipileMessageAttachment: {
+						where: { is_deleted: false },
+					},
+				},
+			}),
+		]);
+
+		return {
+			message,
+			previousMessages: previousMessages.reverse(), // Reverse to chronological order
+			nextMessages,
+		};
 	}
 }

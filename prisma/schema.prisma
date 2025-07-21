@@ -15,6 +15,65 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Unipile API Enums
+enum UnipileAccountType {
+  LINKEDIN
+  WHATSAPP
+  TELEGRAM
+  INSTAGRAM
+  FACEBOOK
+}
+
+enum UnipileAccountStatus {
+  connected
+  disconnected
+  error
+}
+
+enum UnipileChatType {
+  direct
+  group
+}
+
+enum UnipileContentType {
+  inmail
+  sponsored
+  linkedin_offer
+}
+
+enum UnipileNetworkDistance {
+  SELF
+  FIRST
+  SECOND
+  THIRD
+  OUT_OF_NETWORK
+  DISTANCE_1
+  DISTANCE_2
+  DISTANCE_3
+}
+
+enum UnipileMessageType {
+  MESSAGE
+  EVENT
+  SYSTEM
+}
+
+enum UnipileAttendeeType {
+  MEMBER
+  ADMIN
+  GUEST
+  ORGANIZATION
+}
+
+enum UnipileAttachmentType {
+  img
+  video
+  audio
+  file
+  linkedin_post
+  video_meeting
+}
+
 model Post {
   id        Int      @id @default(autoincrement())
   name      String
@@ -25,8 +84,7 @@ model Post {
 }
 
 model User {
-  id             String           @id @default(uuid())
-  clerk_id       String           @unique // Clerk user ID
+  id             String           @id // Clerk user ID - no UUID generation needed
   email          String           @unique
   first_name     String?
   last_name      String?
@@ -73,79 +131,208 @@ model Message {
 }
 
 // Represents a connected Unipile account (LinkedIn, etc.)
+// API Reference: GET /accounts/{account_id}
 model UnipileAccount {
-  id         String   @id @default(uuid())
-  user       User     @relation(fields: [user_id], references: [id])
+  id         String               @id @default(uuid())
+  user       User                 @relation(fields: [user_id], references: [id])
   user_id    String
-  provider   String // "linkedin", "whatsapp", etc.
-  account_id String // Unipile account ID
-  status     String   @default("connected") // "connected", "disconnected", "error"
-  is_deleted Boolean  @default(false)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  provider   String // Maps to UnipileApiAccountStatus.provider - "linkedin", "whatsapp", etc. (lowercase for compatibility)
+  account_id String // Maps to UnipileApiAccountStatus.account_id - Unipile account ID
+  status     UnipileAccountStatus @default(connected) // Maps to UnipileApiAccountStatus.status
+  is_deleted Boolean              @default(false)
+  created_at DateTime             @default(now())
+  updated_at DateTime             @updatedAt
 
   UnipileMessage UnipileMessage[]
   UnipileContact UnipileContact[]
+  UnipileChat    UnipileChat[]
 
   @@unique([user_id, provider, account_id])
   @@index([user_id])
 }
 
-// Represents messages from Unipile (LinkedIn messages, etc.)
-model UnipileMessage {
-  id                 String         @id @default(uuid())
-  unipile_account    UnipileAccount @relation(fields: [unipile_account_id], references: [id])
+// Represents chats/conversations from Unipile
+// API Reference: GET /chats, GET /chats/{chat_id}
+model UnipileChat {
+  id                 String              @id @default(uuid())
+  unipile_account    UnipileAccount      @relation(fields: [unipile_account_id], references: [id])
   unipile_account_id String
-  external_id        String // Message ID from the provider (LinkedIn, etc.)
-  chat_id            String? // Chat/conversation ID
-  sender_id          String? // Sender's provider ID
-  recipient_id       String? // Recipient's provider ID
-  message_type       String         @default("text") // "text", "file", "image", etc.
-  content            String? // Message content
-  is_read            Boolean        @default(false)
-  is_outgoing        Boolean        @default(false) // true if sent by user, false if received
-  sent_at            DateTime? // When the message was sent
-  is_deleted         Boolean        @default(false)
-  created_at         DateTime       @default(now())
-  updated_at         DateTime       @updatedAt
+  external_id        String // Maps to UnipileApiChat.id - Chat ID from the provider
+  provider           String              @default("linkedin") // Maps to UnipileApiChat.account_type - "linkedin", "whatsapp", etc. (lowercase for compatibility)
+  account_type       UnipileAccountType? // Maps to UnipileApiChat.account_type - LINKEDIN, WHATSAPP, etc.
+  chat_type          UnipileChatType     @default(direct) // Maps to UnipileApiChat.type - direct (0), group (1)
+  name               String? // Maps to UnipileApiChat.name - Chat name (for group chats)
+  last_message_at    DateTime? // Maps to UnipileApiChat.timestamp or lastMessage.timestamp
+  unread_count       Int                 @default(0) // Maps to UnipileApiChat.unread_count
+  archived           Int                 @default(0) // Maps to UnipileApiChat.archived - 0 or 1
+  read_only          Int                 @default(0) // Maps to UnipileApiChat.read_only - 0 or 1
+  muted_until        BigInt? // Maps to UnipileApiChat.muted_until - Unix timestamp or -1
+  organization_id    String? // Maps to UnipileApiChat.organization_id - For organization messages
+  mailbox_id         String? // Maps to UnipileApiChat.mailbox_id - For organization messages  
+  mailbox_name       String? // Maps to UnipileApiChat.mailbox_name - For organization messages
+  content_type       UnipileContentType? // Maps to UnipileApiChat.content_type - inmail, sponsored, linkedin_offer
+  disabled_features  Json? // Maps to UnipileApiChat.disabledFeatures - Array of disabled features
+  is_deleted         Boolean             @default(false)
+  created_at         DateTime            @default(now()) // Maps to UnipileApiChat.created_at
+  updated_at         DateTime            @updatedAt // Maps to UnipileApiChat.updated_at
+
+  UnipileMessage      UnipileMessage[]
+  UnipileChatAttendee UnipileChatAttendee[]
+
+  @@unique([unipile_account_id, external_id])
+  @@index([unipile_account_id])
+  @@index([last_message_at])
+}
+
+// Represents chat participants/attendees
+// API Reference: GET /chats/{chat_id}/attendees
+model UnipileChatAttendee {
+  id                 String                  @id @default(uuid())
+  chat               UnipileChat             @relation(fields: [chat_id], references: [id])
+  chat_id            String
+  external_id        String // Maps to UnipileApiChatAttendee.provider_id - Participant's provider ID (LinkedIn, etc.)
+  name               String? // Maps to UnipileApiChatAttendee.name
+  display_name       String? // Maps to UnipileApiChatAttendee.name (used as display_name)
+  first_name         String? // Not available in new API structure
+  last_name          String? // Not available in new API structure
+  username           String? // Maps to UnipileApiChatAttendee.specifics.member_urn - LinkedIn URN
+  profile_image_url  String? // Maps to UnipileApiChatAttendee.picture_url
+  profile_url        String? // Maps to UnipileApiChatAttendee.profile_url
+  headline           String? // Maps to UnipileApiChatAttendee.specifics.headline
+  is_contact         Boolean                 @default(false) // Maps to network_distance !== "OUT_OF_NETWORK"
+  is_self            Int                     @default(0) // Maps to UnipileApiChatAttendee.is_self - 0 or 1
+  hidden             Int                     @default(0) // Maps to UnipileApiChatAttendee.hidden - 0 or 1
+  member_urn         String? // Maps to UnipileApiChatAttendee.specifics.member_urn - LinkedIn member URN
+  network_distance   UnipileNetworkDistance? // Maps to UnipileApiChatAttendee.specifics.network_distance
+  occupation         String? // Maps to UnipileApiChatAttendee.specifics.occupation
+  location           String? // Maps to UnipileApiChatAttendee.specifics.location
+  pending_invitation Boolean                 @default(false) // Maps to UnipileApiChatAttendee.specifics.pending_invitation
+  contact_info       Json? // Maps to UnipileApiChatAttendee.specifics.contact_info - emails, phone numbers, etc.
+  is_deleted         Boolean                 @default(false)
+  created_at         DateTime                @default(now())
+  updated_at         DateTime                @updatedAt
+
+  @@unique([chat_id, external_id])
+  @@index([chat_id])
+}
+
+// Represents messages from Unipile (LinkedIn messages, etc.)
+// API Reference: GET /chats/{chat_id}/messages, GET /messages/{message_id}
+model UnipileMessage {
+  id                 String               @id @default(uuid())
+  unipile_account    UnipileAccount       @relation(fields: [unipile_account_id], references: [id])
+  unipile_account_id String
+  chat               UnipileChat?         @relation(fields: [chat_id], references: [id])
+  chat_id            String?
+  external_id        String // Maps to UnipileApiMessage.id - Message ID from the provider (LinkedIn, etc.)
+  external_chat_id   String? // Maps to UnipileApiMessage.chat_id - Chat/conversation ID from provider
+  sender_id          String? // Maps to UnipileApiMessage.sender_id - Sender's provider ID
+  recipient_id       String? // Not available in new API structure - was UnipileApiMessage.recipient.id
+  message_type       String               @default("text") // Legacy field - use UnipileMessageType enum when possible
+  content            String? // Maps to UnipileApiMessage.text - Message content
+  is_read            Boolean              @default(false) // Maps to UnipileApiMessage.seen === 1
+  is_outgoing        Boolean              @default(false) // Maps to UnipileApiMessage.is_sender === 1
+  sent_at            DateTime? // Maps to UnipileApiMessage.timestamp - When the message was sent
+  sender_urn         String? // Maps to UnipileApiMessage.sender_urn - LinkedIn URN of sender
+  attendee_type      UnipileAttendeeType? // Maps to UnipileApiMessage.attendee_type
+  attendee_distance  Int? // Maps to UnipileApiMessage.attendee_distance - Connection distance
+  seen               Int                  @default(0) // Maps to UnipileApiMessage.seen - 0 or 1
+  hidden             Int                  @default(0) // Maps to UnipileApiMessage.hidden - 0 or 1
+  deleted            Int                  @default(0) // Maps to UnipileApiMessage.deleted - 0 or 1
+  edited             Int                  @default(0) // Maps to UnipileApiMessage.edited - 0 or 1
+  is_event           Int                  @default(0) // Maps to UnipileApiMessage.is_event - 0 or 1
+  delivered          Int                  @default(0) // Maps to UnipileApiMessage.delivered - 0 or 1
+  behavior           Int                  @default(0) // Maps to UnipileApiMessage.behavior
+  event_type         Int                  @default(0) // Maps to UnipileApiMessage.event_type
+  replies            Int                  @default(0) // Maps to UnipileApiMessage.replies - Number of replies
+  subject            String? // Maps to UnipileApiMessage.subject - For some message types
+  parent             String? // Maps to UnipileApiMessage.parent - Parent message ID
+  metadata           Json? // Maps to quoted, reactions, reply_to, and other rich message data
+  is_deleted         Boolean              @default(false)
+  created_at         DateTime             @default(now()) // Maps to UnipileApiMessage.created_at
+  updated_at         DateTime             @updatedAt // Maps to UnipileApiMessage.updated_at
+
+  UnipileMessageAttachment UnipileMessageAttachment[]
 
   @@unique([unipile_account_id, external_id])
   @@index([unipile_account_id])
   @@index([chat_id])
+  @@index([sent_at])
+}
+
+// Represents message attachments
+// API Reference: From UnipileApiMessage.attachments array, download via GET /attachments/{attachment_id}
+model UnipileMessageAttachment {
+  id              String                @id @default(uuid())
+  message         UnipileMessage        @relation(fields: [message_id], references: [id])
+  message_id      String
+  external_id     String // Maps to UnipileApiAttachment.id - Attachment ID from provider
+  attachment_type UnipileAttachmentType // Maps to UnipileApiAttachment.type
+  url             String? // Maps to UnipileApiAttachment.url - Download URL
+  filename        String? // Maps to UnipileApiAttachment.file_name or filename
+  file_size       Int? // Maps to UnipileApiAttachment.file_size - Size in bytes
+  mime_type       String? // Maps to UnipileApiAttachment.mimetype or mime_type
+  unavailable     Boolean               @default(false) // Maps to UnipileApiAttachment.unavailable
+  url_expires_at  BigInt? // Maps to UnipileApiAttachment.url_expires_at - Unix timestamp
+  // Type-specific fields
+  width           Int? // Maps to UnipileApiAttachment.size.width - For images/videos
+  height          Int? // Maps to UnipileApiAttachment.size.height - For images/videos
+  duration        Int? // Maps to UnipileApiAttachment.duration - For audio/video in seconds
+  sticker         Boolean               @default(false) // Maps to UnipileApiAttachment.sticker - For images
+  gif             Boolean               @default(false) // Maps to UnipileApiAttachment.gif - For videos
+  voice_note      Boolean               @default(false) // Maps to UnipileApiAttachment.voice_note - For audio
+  // Video meeting specific fields
+  starts_at       BigInt? // Maps to UnipileApiAttachment.starts_at - Unix timestamp
+  expires_at      BigInt? // Maps to UnipileApiAttachment.expires_at - Unix timestamp
+  time_range      Int? // Maps to UnipileApiAttachment.time_range - Duration in seconds
+  is_deleted      Boolean               @default(false)
+  created_at      DateTime              @default(now())
+  updated_at      DateTime              @updatedAt
+
+  @@unique([message_id, external_id])
+  @@index([message_id])
 }
 
 // Represents contacts/profiles from Unipile
+// API Reference: GET /users/{identifier}, from UnipileApiParticipant objects in chats/messages
 model UnipileContact {
-  id                 String         @id @default(uuid())
-  unipile_account    UnipileAccount @relation(fields: [unipile_account_id], references: [id])
+  id                 String                  @id @default(uuid())
+  unipile_account    UnipileAccount          @relation(fields: [unipile_account_id], references: [id])
   unipile_account_id String
-  external_id        String // Contact's provider ID
-  provider_url       String? // LinkedIn profile URL, etc.
-  full_name          String?
-  first_name         String?
-  last_name          String?
-  headline           String? // Job title, bio, etc.
-  profile_image_url  String?
-  last_interaction   DateTime? // Last message or interaction
-  is_connection      Boolean        @default(false) // Connected on LinkedIn, etc.
-  is_deleted         Boolean        @default(false)
-  created_at         DateTime       @default(now())
-  updated_at         DateTime       @updatedAt
+  external_id        String // Maps to UnipileApiParticipant.id or provider_id - Contact's provider ID
+  provider_url       String? // Maps to UnipileApiParticipant.profile_url - LinkedIn profile URL, etc.
+  full_name          String? // Maps to UnipileApiParticipant.display_name or name
+  first_name         String? // Maps to UnipileApiParticipant.first_name (legacy - not available in new API)
+  last_name          String? // Maps to UnipileApiParticipant.last_name (legacy - not available in new API)
+  headline           String? // Maps to UnipileApiParticipant.headline or specifics.headline - Job title, bio, etc.
+  profile_image_url  String? // Maps to UnipileApiParticipant.profile_picture_url, avatar_url, or picture_url
+  last_interaction   DateTime? // Computed field - Last message or interaction timestamp
+  is_connection      Boolean                 @default(false) // Maps to network_distance !== "OUT_OF_NETWORK" or is_contact
+  member_urn         String? // Maps to UnipileApiChatAttendee.specifics.member_urn - LinkedIn member URN
+  network_distance   UnipileNetworkDistance? // Maps to UnipileApiChatAttendee.specifics.network_distance
+  occupation         String? // Maps to UnipileApiChatAttendee.specifics.occupation
+  location           String? // Maps to UnipileApiChatAttendee.specifics.location
+  pending_invitation Boolean                 @default(false) // Maps to UnipileApiChatAttendee.specifics.pending_invitation
+  contact_info       Json? // Maps to UnipileApiChatAttendee.specifics.contact_info - emails, phone numbers, websites, social handles
+  is_deleted         Boolean                 @default(false)
+  created_at         DateTime                @default(now())
+  updated_at         DateTime                @updatedAt
 
   @@unique([unipile_account_id, external_id])
   @@index([unipile_account_id])
 }
 
 // Represents profile views synced from LinkedIn
+// API Reference: From LinkedIn profile view webhook events via Unipile
 model UnipileProfileView {
   id                String   @id @default(uuid())
   user_id           String
-  viewer_profile_id String? // LinkedIn profile ID of viewer
-  viewer_name       String?
-  viewer_headline   String?
-  viewer_image_url  String?
-  viewed_at         DateTime
-  provider          String   @default("linkedin")
+  viewer_profile_id String? // Maps to UnipileApiProfileView.viewer_profile_id - LinkedIn profile ID of viewer
+  viewer_name       String? // Maps to viewer.display_name or name from webhook
+  viewer_headline   String? // Maps to viewer.headline from webhook
+  viewer_image_url  String? // Maps to viewer.profile_picture_url or avatar_url from webhook
+  viewed_at         DateTime // Maps to UnipileApiProfileView.viewed_at
+  provider          String   @default("linkedin") // Maps to UnipileApiProfileView.provider
   is_deleted        Boolean  @default(false)
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt

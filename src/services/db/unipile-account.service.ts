@@ -1,120 +1,170 @@
-import { db } from "~/server/db";
 import type { Prisma, PrismaClient } from "../../../generated/prisma";
 import type {
+	User,
 	UnipileAccount,
-	UnipileAccountCreateInput,
-	UnipileAccountUpdateInput,
-	UnipileProvider,
-} from "~/types/unipile-account";
+	UnipileAccountStatus,
+} from "../../../generated/prisma";
+
+// Use Prisma's generated types
+export type CreateAccountData = Prisma.UnipileAccountCreateInput;
+export type UpdateAccountData = Prisma.UnipileAccountUpdateInput;
+
+// Account with various include options
+export type AccountWithUser = Prisma.UnipileAccountGetPayload<{
+	include: { user: true };
+}>;
+
+export type UserWithAccounts = Prisma.UserGetPayload<{
+	include: { UnipileAccount: true };
+}>;
+
+export interface FindAccountOptions {
+	include_user?: boolean;
+	include_deleted?: boolean;
+}
 
 export class UnipileAccountService {
 	constructor(private readonly db: PrismaClient) {}
 
 	/**
-	 * Find account by ID
+	 * Find user by email or Clerk ID
 	 */
-	public async findById(id: string): Promise<UnipileAccount | null> {
-		return await this.db.unipileAccount.findUnique({
-			where: { id },
-		});
-	}
-
-	/**
-	 * Find account by user ID and provider
-	 */
-	public async findByUserAndProvider(
-		userId: string,
-		provider: UnipileProvider,
-	): Promise<UnipileAccount | null> {
-		return await db.unipileAccount.findFirst({
+	async findUserByIdentifier(identifier: string): Promise<User | null> {
+		// Try to find by id (clerk_id) first, then by email
+		const user = await this.db.user.findFirst({
 			where: {
-				user_id: userId,
-				provider,
-				is_deleted: false,
+				OR: [{ id: identifier }, { email: identifier }],
 			},
 		});
+
+		return user;
 	}
 
 	/**
-	 * Find account by unique combination (user_id, provider, account_id)
+	 * Find user by Clerk ID specifically
 	 */
-	public async findByUnique(
+	async findUserByClerkId(clerkId: string): Promise<User | null> {
+		return await this.db.user.findUnique({
+			where: { id: clerkId },
+		});
+	}
+
+	/**
+	 * Find Unipile account by ID
+	 */
+	async findUnipileAccount(
 		userId: string,
-		provider: UnipileProvider,
 		accountId: string,
-	): Promise<UnipileAccount | null> {
-		return await db.unipileAccount.findFirst({
+		provider: string,
+		options: FindAccountOptions = {},
+	): Promise<UnipileAccount | AccountWithUser | null> {
+		const { include_user = false, include_deleted = false } = options;
+
+		return (await this.db.unipileAccount.findFirst({
 			where: {
 				user_id: userId,
-				provider,
 				account_id: accountId,
-				is_deleted: false,
+				provider: provider,
+				...(include_deleted ? {} : { is_deleted: false }),
 			},
-		});
+			...(include_user ? { include: { user: true } } : {}),
+		})) as UnipileAccount | AccountWithUser | null;
 	}
 
 	/**
-	 * Create a new Unipile account
+	 * Find Unipile account by provider details
 	 */
-	public async create(
-		data: UnipileAccountCreateInput,
-	): Promise<UnipileAccount> {
-		return await db.unipileAccount.create({
-			data,
-		});
-	}
-
-	/**
-	 * Update account by ID
-	 */
-	public async update(
-		id: string,
-		data: UnipileAccountUpdateInput,
-	): Promise<UnipileAccount> {
-		return await db.unipileAccount.update({
-			where: { id },
-			data: {
-				...data,
-				updated_at: new Date(),
-			},
-		});
-	}
-
-	/**
-	 * Upsert account by unique combination
-	 * Used heavily in webhook processing
-	 */
-	public async upsertByUnique(
-		userId: string,
-		provider: UnipileProvider,
+	async findUnipileAccountByProvider(
 		accountId: string,
-		createData: UnipileAccountCreateInput,
-		updateData?: UnipileAccountUpdateInput,
+		provider: string,
+		options: FindAccountOptions = {},
+	): Promise<UnipileAccount | AccountWithUser | null> {
+		const { include_user = false, include_deleted = false } = options;
+
+		return (await this.db.unipileAccount.findFirst({
+			where: {
+				account_id: accountId,
+				provider: provider,
+				...(include_deleted ? {} : { is_deleted: false }),
+			},
+			...(include_user ? { include: { user: true } } : {}),
+		})) as UnipileAccount | AccountWithUser | null;
+	}
+
+	/**
+	 * Create or update a Unipile account
+	 */
+	async upsertUnipileAccount(
+		userId: string,
+		accountId: string,
+		provider: string,
+		updateData: Partial<Prisma.UnipileAccountUpdateInput>,
+		createData?: Partial<Prisma.UnipileAccountCreateWithoutUserInput>,
 	): Promise<UnipileAccount> {
-		return await db.unipileAccount.upsert({
+		return await this.db.unipileAccount.upsert({
 			where: {
 				user_id_provider_account_id: {
 					user_id: userId,
-					provider,
+					provider: provider,
 					account_id: accountId,
 				},
 			},
-			create: createData,
 			update: {
 				...updateData,
 				updated_at: new Date(),
 			},
+			create: {
+				user: {
+					connect: { id: userId },
+				},
+				account_id: accountId,
+				provider: provider,
+				status: "connected",
+				...createData,
+			},
 		});
 	}
 
 	/**
-	 * Soft delete account
+	 * Update account status
 	 */
-	public async softDelete(id: string): Promise<UnipileAccount> {
+	async updateAccountStatus(
+		accountId: string,
+		provider: string,
+		status: string,
+	): Promise<Prisma.BatchPayload> {
+		return await this.db.unipileAccount.updateMany({
+			where: {
+				account_id: accountId,
+				provider: provider,
+				is_deleted: false,
+			},
+			data: {
+				status: status as UnipileAccountStatus,
+				updated_at: new Date(),
+			},
+		});
+	}
+
+	/**
+	 * Mark account as deleted (soft delete)
+	 */
+	async markAccountAsDeleted(
+		userId: string,
+		accountId: string,
+		provider: string,
+	): Promise<UnipileAccount> {
 		return await this.db.unipileAccount.update({
-			where: { id },
+			where: {
+				user_id_provider_account_id: {
+					user_id: userId,
+					provider: provider,
+					account_id: accountId,
+				},
+			},
 			data: {
 				is_deleted: true,
+				status: "disconnected",
 				updated_at: new Date(),
 			},
 		});
@@ -123,10 +173,15 @@ export class UnipileAccountService {
 	/**
 	 * Get all accounts for a user
 	 */
-	public async findByUserId(userId: string, includeDeleted = false) {
+	async getUserAccounts(
+		userId: string,
+		provider?: string,
+		includeDeleted = false,
+	): Promise<UnipileAccount[]> {
 		return await this.db.unipileAccount.findMany({
 			where: {
 				user_id: userId,
+				...(provider ? { provider } : {}),
 				...(includeDeleted ? {} : { is_deleted: false }),
 			},
 			orderBy: { created_at: "desc" },
@@ -134,169 +189,59 @@ export class UnipileAccountService {
 	}
 
 	/**
-	 * Get account with user details
+	 * Check if account is active
 	 */
-	public async findWithUser(id: string) {
-		return await this.db.unipileAccount.findUnique({
-			where: { id },
-			include: {
-				user: true,
+	async isAccountActive(
+		userId: string,
+		accountId: string,
+		provider: string,
+	): Promise<boolean> {
+		const count = await this.db.unipileAccount.count({
+			where: {
+				user_id: userId,
+				account_id: accountId,
+				provider: provider,
+				status: "connected",
+				is_deleted: false,
 			},
 		});
-	}
 
-	/**
-	 * Get account with messages and contacts
-	 */
-	public async findWithRelations(id: string) {
-		return await this.db.unipileAccount.findUnique({
-			where: { id },
-			include: {
-				user: true,
-				UnipileMessage: {
-					where: { is_deleted: false },
-					orderBy: { sent_at: "desc" },
-					take: 50, // Limit to recent messages
-				},
-				UnipileContact: {
-					where: { is_deleted: false },
-					orderBy: { last_interaction: "desc" },
-					take: 50, // Limit to recent contacts
-				},
-			},
-		});
-	}
-
-	/**
-	 * Update account status
-	 */
-	public async updateStatus(
-		id: string,
-		status: string,
-		providerData?: Record<string, unknown>,
-	): Promise<UnipileAccount> {
-		return await db.unipileAccount.update({
-			where: { id },
-			data: {
-				status,
-				...(providerData
-					? { provider_data: providerData as Prisma.InputJsonValue }
-					: {}),
-				updated_at: new Date(),
-			},
-		});
+		return count > 0;
 	}
 
 	/**
 	 * Get account statistics
 	 */
-	public async getAccountStats(id: string) {
-		const account = await this.db.unipileAccount.findUnique({
-			where: { id },
-			include: {
-				UnipileMessage: {
-					where: { is_deleted: false },
+	async getAccountStats(userId: string): Promise<{
+		totalAccounts: number;
+		connectedAccounts: number;
+		disconnectedAccounts: number;
+		errorAccounts: number;
+	}> {
+		const [stats] = await this.db.$queryRaw<
+			[
+				{
+					total_accounts: number;
+					connected_accounts: number;
+					disconnected_accounts: number;
+					error_accounts: number;
 				},
-				UnipileContact: {
-					where: { is_deleted: false },
-				},
-			},
-		});
-
-		if (!account) return null;
-
-		const totalMessages = account.UnipileMessage.length;
-		const outgoingMessages = account.UnipileMessage.filter(
-			(m) => m.is_outgoing,
-		).length;
-		const incomingMessages = totalMessages - outgoingMessages;
-		const totalContacts = account.UnipileContact.length;
-		const connections = account.UnipileContact.filter(
-			(c) => c.is_connection,
-		).length;
+			]
+		>`
+			SELECT 
+				COUNT(*)::int as total_accounts,
+				COUNT(*) FILTER (WHERE status = 'connected')::int as connected_accounts,
+				COUNT(*) FILTER (WHERE status = 'disconnected')::int as disconnected_accounts,
+				COUNT(*) FILTER (WHERE status = 'error')::int as error_accounts
+			FROM "UnipileAccount"
+			WHERE user_id = ${userId} AND is_deleted = false
+		`;
 
 		return {
-			account,
-			stats: {
-				totalMessages,
-				outgoingMessages,
-				incomingMessages,
-				totalContacts,
-				connections,
-			},
+			totalAccounts: stats?.total_accounts || 0,
+			connectedAccounts: stats?.connected_accounts || 0,
+			disconnectedAccounts: stats?.disconnected_accounts || 0,
+			errorAccounts: stats?.error_accounts || 0,
 		};
-	}
-
-	/**
-	 * List accounts with pagination
-	 */
-	public async list(
-		options: {
-			page?: number;
-			limit?: number;
-			userId?: string;
-			provider?: UnipileProvider;
-			status?: string;
-			includeDeleted?: boolean;
-		} = {},
-	) {
-		const {
-			page = 1,
-			limit = 50,
-			userId,
-			provider,
-			status,
-			includeDeleted = false,
-		} = options;
-		const skip = (page - 1) * limit;
-
-		const whereClause: Prisma.UnipileAccountWhereInput = {
-			...(includeDeleted ? {} : { is_deleted: false }),
-			...(userId ? { user_id: userId } : {}),
-			...(provider ? { provider } : {}),
-			...(status ? { status } : {}),
-		};
-
-		const [accounts, total] = await Promise.all([
-			db.unipileAccount.findMany({
-				where: whereClause,
-				skip,
-				take: limit,
-				orderBy: { created_at: "desc" },
-				include: {
-					user: {
-						select: {
-							id: true,
-							email: true,
-							first_name: true,
-							last_name: true,
-						},
-					},
-				},
-			}),
-			db.unipileAccount.count({ where: whereClause }),
-		]);
-
-		return {
-			accounts,
-			pagination: {
-				page,
-				limit,
-				total,
-				pages: Math.ceil(total / limit),
-			},
-		};
-	}
-
-	/**
-	 * Check if account exists
-	 */
-	public async exists(
-		userId: string,
-		provider: UnipileProvider,
-		accountId: string,
-	): Promise<boolean> {
-		const account = await this.findByUnique(userId, provider, accountId);
-		return !!account;
 	}
 }

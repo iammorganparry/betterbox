@@ -7,7 +7,8 @@ export interface LinkedInCredentials {
 }
 
 export interface LinkedInCookieAuth {
-	li_at_token: string;
+	access_token: string;
+	user_agent: string;
 }
 
 export interface LinkedInAuthResponse {
@@ -26,6 +27,10 @@ export interface CheckpointResponse {
 	status?: string;
 	error?: string;
 	message?: string;
+}
+
+enum Provider {
+	LINKEDIN = "LINKEDIN",
 }
 
 // Type for error responses from axios
@@ -88,12 +93,18 @@ export class LinkedInAuthService {
 		cookieAuth: LinkedInCookieAuth,
 	): Promise<LinkedInAuthResponse> {
 		try {
+			console.log(
+				`[LinkedInAuthService] Authenticating with cookies: ${cookieAuth.access_token}`,
+			);
 			const response = await this.unipileClient.post("/accounts", {
-				provider: "linkedin",
-				cookies: {
-					li_at: cookieAuth.li_at_token,
-				},
+				provider: Provider.LINKEDIN,
+				access_token: cookieAuth.access_token,
+				user_agent: cookieAuth.user_agent,
 			});
+
+			console.log(
+				`[LinkedInAuthService] Response: ${JSON.stringify(response.data)}`,
+			);
 
 			return {
 				success: true,
@@ -103,6 +114,9 @@ export class LinkedInAuthService {
 				checkpoint_id: response.data.checkpoint_id,
 			};
 		} catch (error: unknown) {
+			console.log(
+				`[LinkedInAuthService] Error authenticating with cookies: ${error}`,
+			);
 			const errorMessage =
 				error instanceof Error ? error.message : "Unknown error";
 			const responseError = (error as ErrorWithResponse)?.response?.data

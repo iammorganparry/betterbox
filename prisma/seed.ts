@@ -1,20 +1,18 @@
-import { PrismaClient } from "../generated/prisma";
-
-const prisma = new PrismaClient();
+import { db } from "~/server/db";
 
 async function main() {
 	console.log("🌱 Starting database seeding...");
 
 	// Create the user
-	const user = await prisma.user.upsert({
-		where: { clerk_id: "user_30Ah4rGa8g3GnLpXGLnHXyuzVew" },
+	const user = await db.user.upsert({
+		where: { id: "user_30Ah4rGa8g3GnLpXGLnHXyuzVew" },
 		update: {
 			email: "morgan@trigify.io",
 			first_name: "Morgan",
 			last_name: "Parry",
 		},
 		create: {
-			clerk_id: "user_30Ah4rGa8g3GnLpXGLnHXyuzVew",
+			id: "user_30Ah4rGa8g3GnLpXGLnHXyuzVew",
 			email: "morgan@trigify.io",
 			first_name: "Morgan",
 			last_name: "Parry",
@@ -27,10 +25,10 @@ async function main() {
 
 main()
 	.then(async () => {
-		await prisma.$disconnect();
+		await db.$disconnect();
 	})
 	.catch(async (e) => {
 		console.error("❌ Error during seeding:", e);
-		await prisma.$disconnect();
+		await db.$disconnect();
 		process.exit(1);
 	});

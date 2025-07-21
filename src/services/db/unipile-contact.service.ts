@@ -1,98 +1,268 @@
-import { db } from "~/server/db";
-import type { Prisma, PrismaClient } from "generated/prisma";
-import type {
-	UnipileContact,
-	UnipileContactCreateInput,
-	UnipileContactUpdateInput,
-} from "~/types/unipile-contact";
+import type { Prisma, PrismaClient } from "../../../generated/prisma";
+import type { UnipileContact } from "../../../generated/prisma";
+
+// Use Prisma's generated types
+export type CreateContactData = Prisma.UnipileContactCreateInput;
+export type UpdateContactData = Prisma.UnipileContactUpdateInput;
+
+// Contact with various include options
+export type ContactWithAccount = Prisma.UnipileContactGetPayload<{
+	include: { unipile_account: true };
+}>;
+
+// Note: UnipileContact doesn't have direct message relations in the schema
+// Messages reference contacts via sender_id/recipient_id fields
+
+export interface FindContactOptions {
+	include_account?: boolean;
+	include_deleted?: boolean;
+	limit?: number;
+	offset?: number;
+	order_by?: "created_at" | "updated_at" | "last_interaction";
+	order_direction?: "asc" | "desc";
+	is_connection?: boolean;
+}
 
 export class UnipileContactService {
 	constructor(private readonly db: PrismaClient) {}
 
 	/**
-	 * Find contact by ID
-	 */
-	public async findById(id: string): Promise<UnipileContact | null> {
-		return await db.unipileContact.findUnique({
-			where: { id },
-		});
-	}
-
-	/**
 	 * Find contact by external ID
 	 */
-	public async findByExternalId(
-		accountId: string,
+	async findContactByExternalId(
+		unipileAccountId: string,
 		externalId: string,
+		includeDeleted = false,
 	): Promise<UnipileContact | null> {
-		return await db.unipileContact.findUnique({
+		return await this.db.unipileContact.findFirst({
 			where: {
-				unipile_account_id_external_id: {
-					unipile_account_id: accountId,
-					external_id: externalId,
-				},
+				unipile_account_id: unipileAccountId,
+				external_id: externalId,
+				...(includeDeleted ? {} : { is_deleted: false }),
 			},
 		});
 	}
 
 	/**
-	 * Create a new contact
+	 * Create or update a contact
 	 */
-	public async create(
-		data: UnipileContactCreateInput,
-	): Promise<UnipileContact> {
-		return await db.unipileContact.create({
-			data,
-		});
-	}
-
-	/**
-	 * Update contact by ID
-	 */
-	public async update(
-		id: string,
-		data: UnipileContactUpdateInput,
-	): Promise<UnipileContact> {
-		return await db.unipileContact.update({
-			where: { id },
-			data: {
-				...data,
-				updated_at: new Date(),
-			},
-		});
-	}
-
-	/**
-	 * Upsert contact by external ID
-	 * Used heavily in webhook and sync processing
-	 */
-	public async upsertByExternalId(
-		accountId: string,
+	async upsertContact(
+		unipileAccountId: string,
 		externalId: string,
-		createData: UnipileContactCreateInput,
-		updateData?: UnipileContactUpdateInput,
+		updateData: Partial<UpdateContactData>,
+		createData?: Partial<Prisma.UnipileContactCreateWithoutUnipile_accountInput>,
 	): Promise<UnipileContact> {
-		return await db.unipileContact.upsert({
+		return await this.db.unipileContact.upsert({
 			where: {
 				unipile_account_id_external_id: {
-					unipile_account_id: accountId,
+					unipile_account_id: unipileAccountId,
 					external_id: externalId,
 				},
 			},
-			create: createData,
 			update: {
 				...updateData,
 				updated_at: new Date(),
 			},
+			create: {
+				unipile_account: {
+					connect: { id: unipileAccountId },
+				},
+				external_id: externalId,
+				is_connection: false,
+				...createData,
+			},
 		});
 	}
 
 	/**
-	 * Soft delete contact
+	 * Get contacts for a Unipile account
 	 */
-	public async softDelete(id: string): Promise<UnipileContact> {
-		return await db.unipileContact.update({
-			where: { id },
+	async getContactsByAccount(
+		unipileAccountId: string,
+		options: FindContactOptions = {},
+	): Promise<UnipileContact[]> {
+		const {
+			include_account = false,
+			include_deleted = false,
+			limit,
+			offset,
+			order_by = "last_interaction",
+			order_direction = "desc",
+			is_connection,
+		} = options;
+
+		return await this.db.unipileContact.findMany({
+			where: {
+				unipile_account_id: unipileAccountId,
+				...(include_deleted ? {} : { is_deleted: false }),
+				...(is_connection !== undefined ? { is_connection } : {}),
+			},
+			include: {
+				...(include_account ? { unipile_account: true } : {}),
+			},
+			orderBy: { [order_by]: order_direction },
+			...(limit ? { take: limit } : {}),
+			...(offset ? { skip: offset } : {}),
+		});
+	}
+
+	/**
+	 * Get contacts for a user across all accounts
+	 */
+	async getContactsByUser(
+		userId: string,
+		provider?: string,
+		options: FindContactOptions = {},
+	): Promise<UnipileContact[]> {
+		const {
+			include_account = false,
+			include_deleted = false,
+			limit,
+			offset,
+			order_by = "last_interaction",
+			order_direction = "desc",
+			is_connection,
+		} = options;
+
+		return await this.db.unipileContact.findMany({
+			where: {
+				unipile_account: {
+					user_id: userId,
+					...(provider ? { provider } : {}),
+					is_deleted: false,
+				},
+				...(include_deleted ? {} : { is_deleted: false }),
+				...(is_connection !== undefined ? { is_connection } : {}),
+			},
+			include: {
+				...(include_account ? { unipile_account: true } : {}),
+			},
+			orderBy: { [order_by]: order_direction },
+			...(limit ? { take: limit } : {}),
+			...(offset ? { skip: offset } : {}),
+		});
+	}
+
+	/**
+	 * Search contacts by name or headline
+	 */
+	async searchContacts(
+		unipileAccountId: string,
+		searchTerm: string,
+		options: FindContactOptions = {},
+	): Promise<UnipileContact[]> {
+		const { limit = 50 } = options;
+
+		return await this.db.unipileContact.findMany({
+			where: {
+				unipile_account_id: unipileAccountId,
+				is_deleted: false,
+				OR: [
+					{
+						full_name: {
+							contains: searchTerm,
+							mode: "insensitive",
+						},
+					},
+					{
+						first_name: {
+							contains: searchTerm,
+							mode: "insensitive",
+						},
+					},
+					{
+						last_name: {
+							contains: searchTerm,
+							mode: "insensitive",
+						},
+					},
+					{
+						headline: {
+							contains: searchTerm,
+							mode: "insensitive",
+						},
+					},
+				],
+			},
+			orderBy: { last_interaction: "desc" },
+			take: limit,
+		});
+	}
+
+	/**
+	 * Update last interaction timestamp
+	 */
+	async updateLastInteraction(
+		contactId: string,
+		interactionDate = new Date(),
+	): Promise<UnipileContact> {
+		return await this.db.unipileContact.update({
+			where: { id: contactId },
+			data: {
+				last_interaction: interactionDate,
+				updated_at: new Date(),
+			},
+		});
+	}
+
+	/**
+	 * Update connection status
+	 */
+	async updateConnectionStatus(
+		contactId: string,
+		isConnection: boolean,
+	): Promise<UnipileContact> {
+		return await this.db.unipileContact.update({
+			where: { id: contactId },
+			data: {
+				is_connection: isConnection,
+				updated_at: new Date(),
+			},
+		});
+	}
+
+	/**
+	 * Get recent contacts based on last interaction
+	 */
+	async getRecentContacts(
+		unipileAccountId: string,
+		limit = 10,
+	): Promise<UnipileContact[]> {
+		return await this.db.unipileContact.findMany({
+			where: {
+				unipile_account_id: unipileAccountId,
+				is_deleted: false,
+				last_interaction: { not: null },
+			},
+			orderBy: { last_interaction: "desc" },
+			take: limit,
+		});
+	}
+
+	/**
+	 * Get contacts that are connections
+	 */
+	async getConnections(
+		unipileAccountId: string,
+		limit?: number,
+	): Promise<UnipileContact[]> {
+		return await this.db.unipileContact.findMany({
+			where: {
+				unipile_account_id: unipileAccountId,
+				is_deleted: false,
+				is_connection: true,
+			},
+			orderBy: { full_name: "asc" },
+			...(limit ? { take: limit } : {}),
+		});
+	}
+
+	/**
+	 * Mark contact as deleted (soft delete)
+	 */
+	async markContactAsDeleted(contactId: string): Promise<UnipileContact> {
+		return await this.db.unipileContact.update({
+			where: { id: contactId },
 			data: {
 				is_deleted: true,
 				updated_at: new Date(),
@@ -101,277 +271,166 @@ export class UnipileContactService {
 	}
 
 	/**
-	 * Get contacts for an account
+	 * Get contact statistics
 	 */
-	public async findByAccountId(
-		accountId: string,
-		options: {
-			limit?: number;
-			offset?: number;
-			includeDeleted?: boolean;
-			isConnection?: boolean;
-		} = {},
-	) {
-		const {
-			limit = 50,
-			offset = 0,
-			includeDeleted = false,
-			isConnection,
-		} = options;
-
-		return await db.unipileContact.findMany({
-			where: {
-				unipile_account_id: accountId,
-				...(includeDeleted ? {} : { is_deleted: false }),
-				...(isConnection !== undefined ? { is_connection: isConnection } : {}),
-			},
-			orderBy: { last_interaction: "desc" },
-			skip: offset,
-			take: limit,
-		});
-	}
-
-	/**
-	 * Get contact with account details
-	 */
-	public async findWithAccount(id: string) {
-		return await db.unipileContact.findUnique({
-			where: { id },
-			include: {
-				unipile_account: {
-					include: {
-						user: true,
-					},
+	async getContactStats(unipileAccountId: string): Promise<{
+		totalContacts: number;
+		connections: number;
+		recentlyInteracted: number;
+		withProfileImages: number;
+	}> {
+		const [stats] = await this.db.$queryRaw<
+			[
+				{
+					total_contacts: number;
+					connections: number;
+					recently_interacted: number;
+					with_profile_images: number;
 				},
-			},
+			]
+		>`
+			SELECT 
+				COUNT(*)::int as total_contacts,
+				COUNT(*) FILTER (WHERE is_connection = true)::int as connections,
+				COUNT(*) FILTER (WHERE last_interaction > NOW() - INTERVAL '30 days')::int as recently_interacted,
+				COUNT(*) FILTER (WHERE profile_image_url IS NOT NULL)::int as with_profile_images
+			FROM "UnipileContact"
+			WHERE unipile_account_id = ${unipileAccountId} AND is_deleted = false
+		`;
+
+		return {
+			totalContacts: stats?.total_contacts || 0,
+			connections: stats?.connections || 0,
+			recentlyInteracted: stats?.recently_interacted || 0,
+			withProfileImages: stats?.with_profile_images || 0,
+		};
+	}
+
+	/**
+	 * Bulk create contacts
+	 */
+	async bulkCreateContacts(
+		contactsData: Prisma.UnipileContactCreateManyInput[],
+	): Promise<Prisma.BatchPayload> {
+		return await this.db.unipileContact.createMany({
+			data: contactsData,
+			skipDuplicates: true,
 		});
 	}
 
 	/**
-	 * Update last interaction time
+	 * Bulk update last interaction for multiple contacts
 	 */
-	public async updateLastInteraction(id: string): Promise<UnipileContact> {
-		return await db.unipileContact.update({
-			where: { id },
+	async bulkUpdateLastInteraction(
+		contactIds: string[],
+		interactionDate = new Date(),
+	): Promise<Prisma.BatchPayload> {
+		return await this.db.unipileContact.updateMany({
+			where: {
+				id: { in: contactIds },
+				is_deleted: false,
+			},
 			data: {
-				last_interaction: new Date(),
+				last_interaction: interactionDate,
 				updated_at: new Date(),
 			},
 		});
 	}
 
 	/**
-	 * Mark as connection
+	 * Find or create contact (convenience method)
 	 */
-	public async markAsConnection(id: string): Promise<UnipileContact> {
-		return await db.unipileContact.update({
-			where: { id },
-			data: {
-				is_connection: true,
-				updated_at: new Date(),
-			},
-		});
-	}
-
-	/**
-	 * Search contacts by name or email
-	 */
-	public async search(
-		accountId: string,
-		query: string,
-		options: {
-			limit?: number;
-			offset?: number;
-			connectionsOnly?: boolean;
-		} = {},
-	) {
-		const { limit = 50, offset = 0, connectionsOnly = false } = options;
-
-		return await db.unipileContact.findMany({
-			where: {
-				unipile_account_id: accountId,
-				is_deleted: false,
-				...(connectionsOnly ? { is_connection: true } : {}),
-				OR: [
-					{ full_name: { contains: query, mode: "insensitive" } },
-					{ headline: { contains: query, mode: "insensitive" } },
-				],
-			},
-			orderBy: { last_interaction: "desc" },
-			skip: offset,
-			take: limit,
-		});
-	}
-
-	/**
-	 * Get recent contacts for user (across all accounts)
-	 */
-	public async getRecentForUser(
-		userId: string,
-		options: {
-			limit?: number;
-			connectionsOnly?: boolean;
-		} = {},
-	) {
-		const { limit = 20, connectionsOnly = false } = options;
-
-		return await db.unipileContact.findMany({
-			where: {
-				unipile_account: {
-					user_id: userId,
-					is_deleted: false,
-				},
-				is_deleted: false,
-				...(connectionsOnly ? { is_connection: true } : {}),
-			},
-			include: {
-				unipile_account: {
-					select: {
-						provider: true,
-						account_id: true,
-					},
-				},
-			},
-			orderBy: { last_interaction: "desc" },
-			take: limit,
-		});
-	}
-
-	/**
-	 * Get contact statistics for account
-	 */
-	public async getAccountStats(accountId: string) {
-		const [total, connections, recent] = await Promise.all([
-			db.unipileContact.count({
-				where: { unipile_account_id: accountId, is_deleted: false },
-			}),
-			db.unipileContact.count({
-				where: {
-					unipile_account_id: accountId,
-					is_deleted: false,
-					is_connection: true,
-				},
-			}),
-			db.unipileContact.count({
-				where: {
-					unipile_account_id: accountId,
-					is_deleted: false,
-					last_interaction: {
-						gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
-					},
-				},
-			}),
-		]);
-
-		return {
-			total,
-			connections,
-			recent,
-		};
-	}
-
-	/**
-	 * List contacts with pagination
-	 */
-	public async list(
-		options: {
-			page?: number;
-			limit?: number;
-			accountId?: string;
-			isConnection?: boolean;
-			search?: string;
-			includeDeleted?: boolean;
-		} = {},
-	) {
-		const {
-			page = 1,
-			limit = 50,
-			accountId,
-			isConnection,
-			search,
-			includeDeleted = false,
-		} = options;
-		const skip = (page - 1) * limit;
-
-		const whereClause: Prisma.UnipileContactWhereInput = {
-			...(includeDeleted ? {} : { is_deleted: false }),
-			...(accountId ? { unipile_account_id: accountId } : {}),
-			...(isConnection !== undefined ? { is_connection: isConnection } : {}),
-			...(search
-				? {
-						OR: [
-							{ full_name: { contains: search, mode: "insensitive" } },
-							{ headline: { contains: search, mode: "insensitive" } },
-						],
-					}
-				: {}),
-		};
-
-		const [contacts, total] = await Promise.all([
-			db.unipileContact.findMany({
-				where: whereClause,
-				skip,
-				take: limit,
-				orderBy: { last_interaction: "desc" },
-				include: {
-					unipile_account: {
-						select: {
-							provider: true,
-							account_id: true,
-							user: {
-								select: {
-									id: true,
-									email: true,
-								},
-							},
-						},
-					},
-				},
-			}),
-			db.unipileContact.count({ where: whereClause }),
-		]);
-
-		return {
-			contacts,
-			pagination: {
-				page,
-				limit,
-				total,
-				pages: Math.ceil(total / limit),
-			},
-		};
-	}
-
-	/**
-	 * Batch create contacts (for bulk sync)
-	 */
-	public async batchCreate(
-		contacts: Prisma.UnipileContactCreateManyInput[],
-	): Promise<void> {
-		// Use createMany for better performance
-		await db.unipileContact.createMany({
-			data: contacts,
-			skipDuplicates: true, // Skip if external_id already exists
-		});
-	}
-
-	/**
-	 * Find or create contact by external ID
-	 * Used when processing messages with sender information
-	 */
-	public async findOrCreateByExternalId(
-		accountId: string,
+	async findOrCreateContact(
+		unipileAccountId: string,
 		externalId: string,
-		contactData: UnipileContactCreateInput,
+		contactData: Partial<Prisma.UnipileContactCreateWithoutUnipile_accountInput>,
 	): Promise<UnipileContact> {
-		// Try to find existing contact first
-		const existing = await this.findByExternalId(accountId, externalId);
-		if (existing) {
-			// Update last interaction time
-			return await this.updateLastInteraction(existing.id);
+		const existingContact = await this.findContactByExternalId(
+			unipileAccountId,
+			externalId,
+		);
+
+		if (existingContact) {
+			return existingContact;
 		}
 
-		// Create new contact
-		return await this.create(contactData);
+		return await this.upsertContact(
+			unipileAccountId,
+			externalId,
+			contactData,
+			contactData,
+		);
+	}
+
+	/**
+	 * Get contact with message count
+	 */
+	async getContactWithMessageCount(
+		contactId: string,
+	): Promise<(UnipileContact & { messageCount: number }) | null> {
+		const contact = await this.db.unipileContact.findUnique({
+			where: { id: contactId },
+		});
+
+		if (!contact) return null;
+
+		const messageCount = await this.db.unipileMessage.count({
+			where: {
+				OR: [
+					{ sender_id: contact.external_id },
+					{ recipient_id: contact.external_id },
+				],
+				is_deleted: false,
+			},
+		});
+
+		return { ...contact, messageCount };
+	}
+
+	/**
+	 * Get active contacts (contacts with recent interactions)
+	 */
+	async getActiveContacts(
+		unipileAccountId: string,
+		daysSinceLastInteraction = 30,
+		limit = 20,
+	): Promise<UnipileContact[]> {
+		const cutoffDate = new Date();
+		cutoffDate.setDate(cutoffDate.getDate() - daysSinceLastInteraction);
+
+		return await this.db.unipileContact.findMany({
+			where: {
+				unipile_account_id: unipileAccountId,
+				is_deleted: false,
+				last_interaction: {
+					gte: cutoffDate,
+				},
+			},
+			orderBy: { last_interaction: "desc" },
+			take: limit,
+		});
+	}
+
+	/**
+	 * Update contact profile information
+	 */
+	async updateContactProfile(
+		contactId: string,
+		profileData: {
+			full_name?: string;
+			first_name?: string;
+			last_name?: string;
+			headline?: string;
+			profile_image_url?: string;
+			provider_url?: string;
+		},
+	): Promise<UnipileContact> {
+		return await this.db.unipileContact.update({
+			where: { id: contactId },
+			data: {
+				...profileData,
+				updated_at: new Date(),
+			},
+		});
 	}
 }

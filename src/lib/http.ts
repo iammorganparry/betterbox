@@ -11,6 +11,7 @@ const defaultConfig: AxiosRequestConfig = {
 	timeout: 30000, // 30 seconds
 	headers: {
 		"Content-Type": "application/json",
+		accept: "application/json",
 	},
 };
 
@@ -31,7 +32,7 @@ export function createUnipileClient(
 		baseURL: `https://${dsn}/api/v1`,
 		headers: {
 			...defaultConfig.headers,
-			Authorization: `Bearer ${apiKey}`,
+			"X-API-KEY": apiKey,
 		},
 	});
 }

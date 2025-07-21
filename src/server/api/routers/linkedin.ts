@@ -9,7 +9,8 @@ const credentialsAuthSchema = z.object({
 });
 
 const cookieAuthSchema = z.object({
-	li_at_token: z.string().min(1, "LinkedIn cookie token is required"),
+	access_token: z.string().min(1, "LinkedIn access token is required"),
+	user_agent: z.string().min(1, "User agent is required"),
 });
 
 const checkpointSchema = z.object({
@@ -26,16 +27,14 @@ export const linkedinRouter = createTRPCRouter({
 	/**
 	 * Get user's LinkedIn accounts
 	 */
-	getAccounts: protectedProcedure.query(async ({ ctx }) => {
+	getLinkedinAccount: protectedProcedure.query(async ({ ctx }) => {
 		try {
-			const accounts = await ctx.services.unipileAccountService.findByUserId(
+			const accounts = await ctx.services.unipileAccountService.getUserAccounts(
 				ctx.userId,
-			);
-			const linkedinAccounts = accounts.filter(
-				(account) => account.provider === "linkedin",
+				"linkedin",
 			);
 
-			return { accounts: linkedinAccounts };
+			return { accounts };
 		} catch (error) {
 			throw new TRPCError({
 				code: "INTERNAL_SERVER_ERROR",
@@ -58,16 +57,10 @@ export const linkedinRouter = createTRPCRouter({
 
 				if (result.success && result.account_id && !result.checkpoint_type) {
 					// Store account in database using service
-					await ctx.services.unipileAccountService.upsertByUnique(
+					await ctx.services.unipileAccountService.upsertUnipileAccount(
 						ctx.userId,
-						"linkedin",
 						result.account_id,
-						{
-							user: { connect: { clerk_id: ctx.userId } },
-							provider: "linkedin",
-							account_id: result.account_id,
-							status: result.status || "connected",
-						},
+						"linkedin",
 						{
 							status: result.status || "connected",
 						},
@@ -103,16 +96,10 @@ export const linkedinRouter = createTRPCRouter({
 
 				if (result.success && result.account_id && !result.checkpoint_type) {
 					// Store account in database using service
-					await ctx.services.unipileAccountService.upsertByUnique(
+					await ctx.services.unipileAccountService.upsertUnipileAccount(
 						ctx.userId,
-						"linkedin",
 						result.account_id,
-						{
-							user: { connect: { clerk_id: ctx.userId } },
-							provider: "linkedin",
-							account_id: result.account_id,
-							status: result.status || "connected",
-						},
+						"linkedin",
 						{
 							status: result.status || "connected",
 						},
@@ -151,16 +138,10 @@ export const linkedinRouter = createTRPCRouter({
 
 				if (result.success && result.account_id) {
 					// Store account in database using service
-					await ctx.services.unipileAccountService.upsertByUnique(
+					await ctx.services.unipileAccountService.upsertUnipileAccount(
 						ctx.userId,
-						"linkedin",
 						result.account_id,
-						{
-							user: { connect: { clerk_id: ctx.userId } },
-							provider: "linkedin",
-							account_id: result.account_id,
-							status: result.status || "connected",
-						},
+						"linkedin",
 						{
 							status: result.status || "connected",
 						},
@@ -192,14 +173,13 @@ export const linkedinRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			try {
 				// Find the account using service
-				const accounts = await ctx.services.unipileAccountService.findByUserId(
-					ctx.userId,
-				);
+				const accounts =
+					await ctx.services.unipileAccountService.getUserAccounts(
+						ctx.userId,
+						"linkedin",
+					);
 				const account = accounts.find(
-					(acc) =>
-						acc.provider === "linkedin" &&
-						acc.account_id === input.accountId &&
-						!acc.is_deleted,
+					(acc) => acc.account_id === input.accountId && !acc.is_deleted,
 				);
 
 				if (!account) {
@@ -216,7 +196,11 @@ export const linkedinRouter = createTRPCRouter({
 
 				if (result.success) {
 					// Mark as deleted using service
-					await ctx.services.unipileAccountService.softDelete(account.id);
+					await ctx.services.unipileAccountService.markAccountAsDeleted(
+						ctx.userId,
+						input.accountId,
+						"linkedin",
+					);
 				}
 
 				return result;

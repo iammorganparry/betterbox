@@ -1,4 +1,3 @@
-import type { PrismaClient } from "generated/prisma";
 import type {
 	UserTopics,
 	MessageNewEvent,
@@ -10,8 +9,6 @@ import type {
 import { getUserChannelId } from "~/types/realtime";
 
 export class RealtimeService {
-	constructor(private readonly db: PrismaClient) {}
-
 	/**
 	 * Helper function to publish a new message event
 	 * Called from Inngest functions when new messages are received

@@ -6,6 +6,7 @@ import {
   Trash2,
   File,
   BarChart3,
+  User,
 } from "lucide-react";
 
 export const sidebarConfig = [
@@ -16,9 +17,9 @@ export const sidebarConfig = [
     isActive: true,
   },
   {
-    title: "Dashboard",
-    url: "/dashboard",
-    icon: BarChart3,
+    title: "Accounts",
+    url: "/accounts",
+    icon: User,
     isActive: false,
   },
   {

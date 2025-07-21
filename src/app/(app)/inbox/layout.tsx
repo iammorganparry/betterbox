@@ -1,6 +1,6 @@
-import { InboxSidebar } from "~/components/inbox-sidebar";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { AppHeader } from "~/components/app-header";
+import { InboxSidebar } from "~/components/inbox-sidebar";
 
 export default function InboxLayout({
   children,
@@ -8,7 +8,7 @@ export default function InboxLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div>
+    <>
       <InboxSidebar />
       <SidebarInset>
         <AppHeader
@@ -18,6 +18,6 @@ export default function InboxLayout({
         />
         {children}
       </SidebarInset>
-    </div>
+    </>
   );
 }

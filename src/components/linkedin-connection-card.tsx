@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Linkedin, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { CheckCircle, AlertCircle, Loader2, LinkedinIcon } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -33,6 +33,19 @@ import {
 import { Separator } from "~/components/ui/separator";
 import { api } from "~/trpc/react";
 
+// Types
+type UnipileAccount = {
+  id: string;
+  account_id: string;
+  status: string;
+  is_deleted: boolean;
+  created_at: Date | string;
+  updated_at: Date | string;
+  provider: string;
+};
+
+type AuthMethod = "credentials" | "cookies";
+
 // Form schemas
 const credentialsSchema = z.object({
   username: z.string().min(1, "Email is required"),
@@ -40,7 +53,7 @@ const credentialsSchema = z.object({
 });
 
 const cookieSchema = z.object({
-  li_at_token: z.string().min(1, "LinkedIn cookie token is required"),
+  access_token: z.string().min(1, "LinkedIn access token is required"),
 });
 
 const checkpointSchema = z.object({
@@ -51,156 +64,46 @@ type CredentialsForm = z.infer<typeof credentialsSchema>;
 type CookieForm = z.infer<typeof cookieSchema>;
 type CheckpointForm = z.infer<typeof checkpointSchema>;
 
+interface CheckpointInfo {
+  checkpointId: string;
+  checkpointType: string;
+  title: string;
+  description: string;
+  inputType: string;
+}
+
+interface AuthResult {
+  success: boolean;
+  checkpoint_type?: string;
+  checkpoint_id?: string;
+  error?: string;
+}
+
 interface LinkedInConnectionCardProps {
   userId: string;
 }
 
-type AuthMethod = "credentials" | "cookies";
-type ConnectionState =
-  | "disconnected"
-  | "connecting"
-  | "connected"
-  | "checkpoint"
-  | "error";
-
 export function LinkedInConnectionCard({
   userId,
 }: LinkedInConnectionCardProps) {
-  const [connectionState, setConnectionState] =
-    useState<ConnectionState>("disconnected");
   const [authMethod, setAuthMethod] = useState<AuthMethod>("credentials");
-  const [error, setError] = useState<string | null>(null);
-  const [checkpointInfo, setCheckpointInfo] = useState<{
-    checkpointId: string;
-    checkpointType: string;
-    title: string;
-    description: string;
-    inputType: string;
-  } | null>(null);
-
-  // tRPC queries and mutations
-  const { data: accountsData, refetch: refetchAccounts } =
-    api.linkedin.getAccounts.useQuery();
-
-  // Set connection state based on accounts data
-  const hasConnectedAccounts =
-    accountsData?.accounts && accountsData.accounts.length > 0;
-
-  useEffect(() => {
-    if (hasConnectedAccounts && connectionState === "disconnected") {
-      setConnectionState("connected");
-    }
-  }, [hasConnectedAccounts, connectionState]);
-
-  const authenticateWithCredentialsMutation =
-    api.linkedin.authenticateWithCredentials.useMutation({
-      onSettled: (result, error) => {
-        if (error) {
-          setError(error.message);
-          setConnectionState("error");
-          return;
-        }
-
-        if (result?.success) {
-          if (result.checkpoint_type && result.checkpoint_id) {
-            // Get checkpoint info
-            const checkpointInfo = api.linkedin.getCheckpointInfo.useQuery({
-              checkpointType: result.checkpoint_type,
-            });
-
-            if (checkpointInfo.data) {
-              setCheckpointInfo({
-                checkpointId: result.checkpoint_id,
-                checkpointType: result.checkpoint_type,
-                ...checkpointInfo.data,
-              });
-              setConnectionState("checkpoint");
-            }
-          } else {
-            handleSuccessfulConnection();
-          }
-        } else {
-          setError(result?.error || "Authentication failed");
-          setConnectionState("error");
-        }
-      },
-    });
-
-  const authenticateWithCookiesMutation =
-    api.linkedin.authenticateWithCookies.useMutation({
-      onSettled: (result, error) => {
-        if (error) {
-          setError(error.message);
-          setConnectionState("error");
-          return;
-        }
-
-        if (result?.success) {
-          if (result.checkpoint_type && result.checkpoint_id) {
-            // Get checkpoint info
-            const checkpointInfo = api.linkedin.getCheckpointInfo.useQuery({
-              checkpointType: result.checkpoint_type,
-            });
-
-            if (checkpointInfo.data) {
-              setCheckpointInfo({
-                checkpointId: result.checkpoint_id,
-                checkpointType: result.checkpoint_type,
-                ...checkpointInfo.data,
-              });
-              setConnectionState("checkpoint");
-            }
-          } else {
-            handleSuccessfulConnection();
-          }
-        } else {
-          setError(result?.error || "Authentication failed");
-          setConnectionState("error");
-        }
-      },
-    });
-
-  const resolveCheckpointMutation = api.linkedin.resolveCheckpoint.useMutation({
-    onSettled: (result, error) => {
-      if (error) {
-        setError(error.message);
-        setConnectionState("checkpoint");
-        return;
-      }
-
-      if (result?.success) {
-        handleSuccessfulConnection();
-      } else {
-        setError(result?.error || "Checkpoint resolution failed");
-        setConnectionState("checkpoint");
-      }
-    },
-  });
-
-  const disconnectMutation = api.linkedin.disconnect.useMutation({
-    onSettled: (result, error) => {
-      if (error) {
-        setError(error.message);
-        setConnectionState("error");
-        return;
-      }
-
-      if (result?.success) {
-        setConnectionState("disconnected");
-        setError(null);
-        refetchAccounts();
-      } else {
-        setError(result?.error || "Failed to disconnect account");
-        setConnectionState("error");
-      }
-    },
-  });
-
-  const getCheckpointInfoQuery = api.linkedin.getCheckpointInfo.useQuery(
-    { checkpointType: "" },
-    { enabled: false }
+  const [checkpointInfo, setCheckpointInfo] = useState<CheckpointInfo | null>(
+    null
   );
+  const [error, setError] = useState<string | null>(null);
 
+  // Data fetching
+  const {
+    data: accountsData,
+    refetch: refetchAccounts,
+    isLoading,
+    error: fetchError,
+  } = api.linkedin.getLinkedinAccount.useQuery(undefined, {
+    retry: 3,
+    retryDelay: 1000,
+  });
+
+  // Forms
   const credentialsForm = useForm<CredentialsForm>({
     resolver: zodResolver(credentialsSchema),
     defaultValues: { username: "", password: "" },
@@ -208,7 +111,7 @@ export function LinkedInConnectionCard({
 
   const cookieForm = useForm<CookieForm>({
     resolver: zodResolver(cookieSchema),
-    defaultValues: { li_at_token: "" },
+    defaultValues: { access_token: "" },
   });
 
   const checkpointForm = useForm<CheckpointForm>({
@@ -216,135 +119,231 @@ export function LinkedInConnectionCard({
     defaultValues: { value: "" },
   });
 
-  const handleCredentialsAuth = async (data: CredentialsForm) => {
-    setConnectionState("connecting");
-    setError(null);
-    authenticateWithCredentialsMutation.mutate(data);
+  // Derived state
+  const connectedAccount = accountsData?.accounts?.find(
+    (account: UnipileAccount) =>
+      account.status === "connected" && !account.is_deleted
+  );
+
+  const isConnected = !!connectedAccount;
+  const hasError = !!error || !!fetchError;
+  const showCheckpoint = !!checkpointInfo;
+
+  // Mutation success handler
+  const handleAuthSuccess = (result: AuthResult) => {
+    if (result?.success) {
+      if (result.checkpoint_type && result.checkpoint_id) {
+        // Handle checkpoint - set basic info, detailed info will be fetched separately
+        setCheckpointInfo({
+          checkpointId: result.checkpoint_id,
+          checkpointType: result.checkpoint_type,
+          title: "Verification Required",
+          description: "Please enter the verification code",
+          inputType: "text",
+        });
+      } else {
+        // Success - reset state and refetch
+        setCheckpointInfo(null);
+        setError(null);
+        credentialsForm.reset();
+        cookieForm.reset();
+        checkpointForm.reset();
+        refetchAccounts();
+      }
+    } else {
+      setError(result?.error || "Authentication failed");
+    }
   };
 
-  const handleCookieAuth = async (data: CookieForm) => {
-    setConnectionState("connecting");
-    setError(null);
-    authenticateWithCookiesMutation.mutate(data);
+  // Mutation error handler
+  const handleAuthError = (error: { message?: string }) => {
+    setError(error?.message || "An error occurred");
   };
 
-  const handleCheckpointResolution = async (data: CheckpointForm) => {
+  // Mutations
+  const authenticateWithCredentials =
+    api.linkedin.authenticateWithCredentials.useMutation({
+      onSuccess: handleAuthSuccess,
+      onError: handleAuthError,
+    });
+
+  const authenticateWithCookies =
+    api.linkedin.authenticateWithCookies.useMutation({
+      onSuccess: handleAuthSuccess,
+      onError: handleAuthError,
+    });
+
+  const resolveCheckpoint = api.linkedin.resolveCheckpoint.useMutation({
+    onSuccess: handleAuthSuccess,
+    onError: handleAuthError,
+  });
+
+  const disconnect = api.linkedin.disconnect.useMutation({
+    onSuccess: () => {
+      setError(null);
+      refetchAccounts();
+    },
+    onError: handleAuthError,
+  });
+
+  // Loading states
+  const isAuthenticating =
+    authenticateWithCredentials.isPending ||
+    authenticateWithCookies.isPending ||
+    resolveCheckpoint.isPending;
+
+  const isDisconnecting = disconnect.isPending;
+
+  // Event handlers
+  const handleCredentialsAuth = (data: CredentialsForm) => {
+    setError(null);
+    authenticateWithCredentials.mutate(data);
+  };
+
+  const handleCookieAuth = (data: CookieForm) => {
+    setError(null);
+    authenticateWithCookies.mutate({
+      access_token: data.access_token,
+      user_agent: window.navigator.userAgent,
+    });
+  };
+
+  const handleCheckpointResolution = (data: CheckpointForm) => {
     if (!checkpointInfo) return;
-
-    setConnectionState("connecting");
     setError(null);
-    resolveCheckpointMutation.mutate({
+    resolveCheckpoint.mutate({
       checkpointId: checkpointInfo.checkpointId,
       checkpointType: checkpointInfo.checkpointType,
       value: data.value,
     });
   };
 
-  const handleSuccessfulConnection = () => {
-    setConnectionState("connected");
-    setCheckpointInfo(null);
-    setError(null);
-
-    // Reset forms
-    credentialsForm.reset();
-    cookieForm.reset();
-    checkpointForm.reset();
-
-    // Refetch accounts to update UI
-    refetchAccounts();
+  const handleDisconnect = () => {
+    if (!connectedAccount) return;
+    disconnect.mutate({ accountId: connectedAccount.account_id });
   };
 
-  const handleDisconnect = async () => {
-    if (!accountsData?.accounts[0]) return;
+  const clearError = () => setError(null);
 
-    setConnectionState("connecting");
-    disconnectMutation.mutate({
-      accountId: accountsData.accounts[0].account_id,
-    });
-  };
-
+  // Status badge
   const getStatusBadge = () => {
-    switch (connectionState) {
-      case "connected":
-        return (
-          <Badge variant="secondary" className="bg-green-100 text-green-800">
-            <CheckCircle className="mr-1 h-3 w-3" />
-            Connected
-          </Badge>
-        );
-      case "connecting":
-        return (
-          <Badge variant="secondary">
-            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-            Connecting...
-          </Badge>
-        );
-      case "checkpoint":
-        return (
-          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-            <AlertCircle className="mr-1 h-3 w-3" />
-            Verification Required
-          </Badge>
-        );
-      case "error":
-        return (
-          <Badge variant="destructive">
-            <AlertCircle className="mr-1 h-3 w-3" />
-            Error
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline">Not Connected</Badge>;
+    if (isLoading) {
+      return (
+        <Badge variant="secondary">
+          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+          Loading...
+        </Badge>
+      );
     }
+
+    if (isConnected) {
+      return (
+        <Badge variant="secondary" className="bg-green-100 text-green-800">
+          <CheckCircle className="mr-1 h-3 w-3" />
+          Connected
+        </Badge>
+      );
+    }
+
+    if (isAuthenticating || isDisconnecting) {
+      return (
+        <Badge variant="secondary">
+          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+          {isDisconnecting ? "Disconnecting..." : "Connecting..."}
+        </Badge>
+      );
+    }
+
+    if (showCheckpoint) {
+      return (
+        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+          <AlertCircle className="mr-1 h-3 w-3" />
+          Verification Required
+        </Badge>
+      );
+    }
+
+    if (hasError) {
+      return (
+        <Badge variant="destructive">
+          <AlertCircle className="mr-1 h-3 w-3" />
+          Error
+        </Badge>
+      );
+    }
+
+    return <Badge variant="outline">Not Connected</Badge>;
   };
 
-  // Determine connection state based on accounts data
-  const connectedAccount = accountsData?.accounts[0];
-  const isConnected = !!connectedAccount && connectionState !== "connecting";
-  const isConnecting = connectionState === "connecting";
+  const currentError = error || fetchError?.message;
 
   return (
-    <Card>
+    <Card className="!shadow-none">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Linkedin className="h-6 w-6 text-blue-600" />
-            LinkedIn
+          <div className="flex items-center rounded-full bg-blue-500 p-2">
+            <LinkedinIcon className="h-8 w-8 text-white" />
           </div>
           {getStatusBadge()}
         </CardTitle>
         <CardDescription>
-          {isConnected
+          {isLoading
+            ? "Checking connection status..."
+            : isConnected
             ? "Sync your LinkedIn messages and connections"
             : "Connect your LinkedIn account to start syncing messages"}
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {error && (
+        {/* Error Alert */}
+        {currentError && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>
+              {currentError}
+              <Button
+                variant="link"
+                size="sm"
+                className="ml-2 h-auto p-0 text-destructive underline"
+                onClick={clearError}
+              >
+                Try again
+              </Button>
+            </AlertDescription>
           </Alert>
         )}
 
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span className="ml-2 text-muted-foreground text-sm">
+              Loading connection status...
+            </span>
+          </div>
+        )}
+
+        {/* Connected State */}
         {isConnected && connectedAccount && (
           <div className="space-y-4">
-            <div className="text-muted-foreground text-sm">
-              <p>Account ID: {connectedAccount.account_id}</p>
-              <p>
-                Connected:{" "}
-                {new Date(connectedAccount.created_at).toLocaleDateString()}
-              </p>
-              <p>Status: {connectedAccount.status}</p>
+            <div className="rounded-lg bg-muted/50 p-4">
+              <h4 className="mb-2 font-medium text-sm">Connected Account</h4>
+              <div className="space-y-1 text-muted-foreground text-sm">
+                <p>Account ID: {connectedAccount.account_id}</p>
+                <p>
+                  Connected:{" "}
+                  {new Date(connectedAccount.created_at).toLocaleDateString()}
+                </p>
+                <p>Status: {connectedAccount.status}</p>
+              </div>
             </div>
-
             <Button
               variant="outline"
               onClick={handleDisconnect}
-              disabled={isConnecting}
+              disabled={isDisconnecting}
             >
-              {isConnecting ? (
+              {isDisconnecting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Disconnecting...
@@ -356,7 +355,8 @@ export function LinkedInConnectionCard({
           </div>
         )}
 
-        {connectionState === "checkpoint" && checkpointInfo && (
+        {/* Checkpoint Verification */}
+        {showCheckpoint && checkpointInfo && (
           <Form {...checkpointForm}>
             <form
               onSubmit={checkpointForm.handleSubmit(handleCheckpointResolution)}
@@ -406,8 +406,8 @@ export function LinkedInConnectionCard({
               />
 
               {checkpointInfo.inputType !== "none" && (
-                <Button type="submit" disabled={isConnecting}>
-                  {isConnecting ? (
+                <Button type="submit" disabled={isAuthenticating}>
+                  {isAuthenticating ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Verifying...
@@ -421,137 +421,138 @@ export function LinkedInConnectionCard({
           </Form>
         )}
 
-        {(connectionState === "disconnected" || connectionState === "error") &&
-          !isConnected && (
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant={authMethod === "credentials" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAuthMethod("credentials")}
-                >
-                  Username & Password
-                </Button>
-                <Button
-                  variant={authMethod === "cookies" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAuthMethod("cookies")}
-                >
-                  Cookie Token
-                </Button>
-              </div>
-
-              <Separator />
-
-              {authMethod === "credentials" && (
-                <Form {...credentialsForm}>
-                  <form
-                    onSubmit={credentialsForm.handleSubmit(
-                      handleCredentialsAuth
-                    )}
-                    className="space-y-4"
-                  >
-                    <FormField
-                      control={credentialsForm.control}
-                      name="username"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="email"
-                              placeholder="your.email@example.com"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={credentialsForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Password</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="password"
-                              placeholder="Your LinkedIn password"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <Button
-                      type="submit"
-                      disabled={isConnecting}
-                      className="w-full"
-                    >
-                      {isConnecting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Connecting...
-                        </>
-                      ) : (
-                        "Connect LinkedIn"
-                      )}
-                    </Button>
-                  </form>
-                </Form>
-              )}
-
-              {authMethod === "cookies" && (
-                <Form {...cookieForm}>
-                  <form
-                    onSubmit={cookieForm.handleSubmit(handleCookieAuth)}
-                    className="space-y-4"
-                  >
-                    <FormField
-                      control={cookieForm.control}
-                      name="li_at_token"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>LinkedIn Cookie Token (li_at)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="text"
-                              placeholder="AQEDATXNiYMAAAGK..."
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            Open LinkedIn in your browser, go to DevTools →
-                            Application → Cookies, and copy the li_at value.
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <Button
-                      type="submit"
-                      disabled={isConnecting}
-                      className="w-full"
-                    >
-                      {isConnecting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Connecting...
-                        </>
-                      ) : (
-                        "Connect with Cookies"
-                      )}
-                    </Button>
-                  </form>
-                </Form>
-              )}
+        {/* Authentication Forms */}
+        {!isConnected && !isLoading && !showCheckpoint && (
+          <div className="space-y-4">
+            {/* Auth Method Toggle */}
+            <div className="flex items-center space-x-2">
+              <Button
+                variant={authMethod === "credentials" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAuthMethod("credentials")}
+              >
+                Username & Password
+              </Button>
+              <Button
+                variant={authMethod === "cookies" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAuthMethod("cookies")}
+              >
+                Cookie Token
+              </Button>
             </div>
-          )}
+
+            <Separator />
+
+            {/* Credentials Form */}
+            {authMethod === "credentials" && (
+              <Form {...credentialsForm}>
+                <form
+                  onSubmit={credentialsForm.handleSubmit(handleCredentialsAuth)}
+                  className="space-y-4"
+                >
+                  <FormField
+                    control={credentialsForm.control}
+                    name="username"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            placeholder="your.email@example.com"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={credentialsForm.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Password</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="password"
+                            placeholder="Your LinkedIn password"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <Button
+                    type="submit"
+                    disabled={isAuthenticating}
+                    className="w-full"
+                  >
+                    {isAuthenticating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      "Connect LinkedIn"
+                    )}
+                  </Button>
+                </form>
+              </Form>
+            )}
+
+            {/* Cookie Form */}
+            {authMethod === "cookies" && (
+              <Form {...cookieForm}>
+                <form
+                  onSubmit={cookieForm.handleSubmit(handleCookieAuth)}
+                  className="space-y-4"
+                >
+                  <FormField
+                    control={cookieForm.control}
+                    name="access_token"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>LinkedIn Access Token</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="text"
+                            placeholder="AQEDATXNiYMAAAGK..."
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Open LinkedIn in your browser, go to DevTools →
+                          Application → Cookies, and copy the li_at value.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <Button
+                    type="submit"
+                    disabled={isAuthenticating}
+                    className="w-full"
+                  >
+                    {isAuthenticating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      "Connect with Cookies"
+                    )}
+                  </Button>
+                </form>
+              </Form>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

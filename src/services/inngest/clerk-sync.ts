@@ -12,7 +12,7 @@ export const userCreated = inngest.createFunction(
 
 		// Extract user data from Clerk webhook
 		const userData = {
-			clerk_id: data.id,
+			id: data.id,
 			email: data.email_addresses[0]?.email_address,
 			first_name: data.first_name,
 			last_name: data.last_name,
@@ -49,7 +49,7 @@ export const userUpdated = inngest.createFunction(
 		// Update user in database
 		const user = await step.run("update-user-in-db", async () => {
 			return await db.user.update({
-				where: { clerk_id: data.id },
+				where: { id: data.id },
 				data: {
 					...userData,
 					updated_at: new Date(),
@@ -73,7 +73,7 @@ export const userDeleted = inngest.createFunction(
 		// Soft delete user
 		const user = await step.run("soft-delete-user", async () => {
 			return await db.user.update({
-				where: { clerk_id: data.id },
+				where: { id: data.id },
 				data: {
 					is_deleted: true,
 					updated_at: new Date(),
