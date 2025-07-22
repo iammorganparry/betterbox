@@ -17,12 +17,14 @@ import type {
 } from "~/types/unipile-api";
 import type { AccountStatusEvent } from "~/types/realtime";
 import { getUserChannelId } from "~/types/realtime";
+import { getCurrentSyncConfig, logSyncConfig } from "~/config/sync.config";
 
 // Import our new service classes
 import { UnipileAccountService } from "../db/unipile-account.service";
 import { UnipileChatService } from "../db/unipile-chat.service";
 import { UnipileMessageService } from "../db/unipile-message.service";
 import type { UnipileContactService } from "../db/unipile-contact.service";
+import { env } from "~/env";
 
 /**
  * Helper function to safely fetch complete profile data for a contact
@@ -102,97 +104,100 @@ async function fetchContactProfile(
 }
 
 /**
- * Helper function to create enriched contact data from chat attendee with profile lookup
+ * Helper function to create contact data directly from chat attendee API data
+ * This uses the rich attendee data without needing additional profile API calls
  */
-async function createEnrichedContactFromAttendee(
-	unipileService: ReturnType<typeof createUnipileService>,
-	unipileAccountService: UnipileContactService,
+async function createContactFromAttendee(
+	unipileContactService: UnipileContactService,
 	unipileAccountId: string,
-	accountId: string,
 	attendeeData: UnipileApiChatAttendee,
 ) {
+	console.log("📝 Creating contact from attendee (detailed):", {
+		provider_id: attendeeData.provider_id,
+		name: attendeeData.name,
+		picture_url: attendeeData.picture_url,
+		profile_url: attendeeData.profile_url,
+		is_self: attendeeData.is_self,
+		hidden: attendeeData.hidden,
+		specifics: {
+			member_urn: attendeeData.specifics?.member_urn,
+			headline: attendeeData.specifics?.headline,
+			occupation: attendeeData.specifics?.occupation,
+			location: attendeeData.specifics?.location,
+			network_distance: attendeeData.specifics?.network_distance,
+			pending_invitation: attendeeData.specifics?.pending_invitation,
+			hasContactInfo: !!attendeeData.specifics?.contact_info,
+		},
+	});
+
 	// Skip if this is the account owner
 	if (attendeeData.is_self === 1) {
+		console.log("⚠️ Skipping contact creation - is_self === 1");
 		return null;
 	}
 
-	// Fetch complete profile data
-	const profileData = await fetchContactProfile(
-		unipileService,
-		attendeeData.provider_id,
-		accountId,
-		{
-			full_name: attendeeData.name,
-			headline: attendeeData.specifics?.headline,
-			profile_image_url: attendeeData.picture_url,
-			provider_url: attendeeData.profile_url,
-		},
-	);
+	// Parse full name into first and last name
+	const fullName = attendeeData.name || "";
+	const nameParts = fullName.trim().split(" ");
+	const firstName = nameParts.length > 0 ? nameParts[0] : undefined;
+	const lastName =
+		nameParts.length > 1 ? nameParts.slice(1).join(" ") : undefined;
 
-	// Create contact with enriched data from profile fetch
-	const enrichedContactInfo = {
-		...(attendeeData.specifics?.contact_info || {}),
-		// Add rich profile data if available
-		...(profileData.raw_profile?.contact_info && {
-			emails: profileData.raw_profile.contact_info.emails,
-			phones: profileData.raw_profile.contact_info.phones,
-			addresses: profileData.raw_profile.contact_info.adresses, // API has typo
-			websites: profileData.raw_profile.websites,
-			socials: profileData.raw_profile.contact_info.socials,
-		}),
-		...(profileData.raw_profile?.summary && {
-			summary: profileData.raw_profile.summary,
-		}),
+	// Map network distance from attendee data to our enum values
+	const networkDistance:
+		| "SELF"
+		| "FIRST"
+		| "SECOND"
+		| "THIRD"
+		| "OUT_OF_NETWORK"
+		| "DISTANCE_1"
+		| "DISTANCE_2"
+		| "DISTANCE_3"
+		| undefined = attendeeData.specifics?.network_distance;
+
+	// We can use the API values directly since our enum supports both formats
+	// DISTANCE_1, DISTANCE_2, DISTANCE_3 are valid enum values
+
+	// Create contact with rich attendee data
+	const contactData = {
+		full_name: fullName || undefined,
+		first_name: firstName,
+		last_name: lastName,
+		headline: attendeeData.specifics?.headline,
+		profile_image_url: attendeeData.picture_url,
+		provider_url: attendeeData.profile_url,
+		member_urn: attendeeData.specifics?.member_urn,
+		is_connection: networkDistance !== "OUT_OF_NETWORK",
+		network_distance: networkDistance,
+		occupation: attendeeData.specifics?.occupation,
+		location: attendeeData.specifics?.location,
+		pending_invitation: attendeeData.specifics?.pending_invitation || false,
+		contact_info: attendeeData.specifics?.contact_info
+			? attendeeData.specifics.contact_info
+			: undefined,
+		last_interaction: new Date(),
 	};
 
-	// Map network distance from profile data or fallback to attendee data
-	let networkDistance = attendeeData.specifics?.network_distance;
-	if (profileData.raw_profile?.network_distance) {
-		// Map the API network distance to our enum values
-		switch (profileData.raw_profile.network_distance) {
-			case "FIRST_DEGREE":
-				networkDistance = "FIRST";
-				break;
-			case "SECOND_DEGREE":
-				networkDistance = "SECOND";
-				break;
-			case "THIRD_DEGREE":
-				networkDistance = "THIRD";
-				break;
-			case "OUT_OF_NETWORK":
-				networkDistance = "OUT_OF_NETWORK";
-				break;
-		}
-	}
+	console.log("📝 Contact data to be saved:", {
+		provider_id: attendeeData.provider_id,
+		contactData: {
+			full_name: contactData.full_name,
+			first_name: contactData.first_name,
+			last_name: contactData.last_name,
+			headline: contactData.headline,
+			profile_image_url: contactData.profile_image_url,
+			provider_url: contactData.provider_url,
+			member_urn: contactData.member_urn,
+			occupation: contactData.occupation,
+			location: contactData.location,
+			network_distance: contactData.network_distance,
+		},
+	});
 
-	// Get current job position from work experience
-	const currentJob = profileData.raw_profile?.work_experience?.find(
-		(job) => job.current,
-	);
-
-	return await unipileAccountService.upsertContact(
+	return await unipileContactService.upsertContact(
 		unipileAccountId,
 		attendeeData.provider_id,
-		{
-			full_name: profileData.full_name,
-			first_name: profileData.first_name,
-			last_name: profileData.last_name,
-			headline: profileData.headline,
-			profile_image_url: profileData.profile_image_url,
-			provider_url: profileData.provider_url,
-			member_urn: profileData.username || attendeeData.specifics?.member_urn,
-			is_connection: networkDistance !== "OUT_OF_NETWORK",
-			network_distance: networkDistance,
-			occupation: currentJob?.position || attendeeData.specifics?.occupation,
-			location:
-				profileData.raw_profile?.location || attendeeData.specifics?.location,
-			pending_invitation: attendeeData.specifics?.pending_invitation || false,
-			contact_info:
-				Object.keys(enrichedContactInfo).length > 0
-					? enrichedContactInfo
-					: undefined,
-			last_interaction: new Date(),
-		},
+		contactData,
 	);
 }
 
@@ -356,6 +361,7 @@ export const unipileNewMessage = inngest.createFunction(
 	{ event: "unipile/message.new" },
 	async ({ event, step, services }) => {
 		const { data } = event;
+		const syncConfig = getCurrentSyncConfig();
 		const {
 			unipileAccountService: accountService,
 			unipileMessageService: messageService,
@@ -389,6 +395,11 @@ export const unipileNewMessage = inngest.createFunction(
 		// Determine if this is an outgoing message (sent by our user)
 		const isOutgoing = sender?.id === account_id;
 
+		// Find the internal chat record by external chat ID
+		const internalChat = await step.run("find-internal-chat", async () => {
+			return await chatService.findChatByExternalId(unipileAccount.id, chat_id);
+		});
+
 		// Upsert the message
 		const savedMessage = await step.run("upsert-message", async () => {
 			return await messageService.upsertMessage(
@@ -399,7 +410,10 @@ export const unipileNewMessage = inngest.createFunction(
 					is_read: message.is_read || false,
 				},
 				{
-					external_chat_id: chat_id,
+					...(internalChat
+						? { chat: { connect: { id: internalChat.id } } }
+						: {}), // Link to internal chat if found
+					external_chat_id: chat_id, // Store external API chat ID
 					sender_id: sender?.id,
 					recipient_id: recipient?.id,
 					message_type: message.type || "text",
@@ -414,9 +428,9 @@ export const unipileNewMessage = inngest.createFunction(
 		// If this is a new contact, create enriched contact using profile data
 		if (!isOutgoing && sender?.id) {
 			await step.run("upsert-enriched-contact", async () => {
-				// Create Unipile service instance for profile fetching if env vars are available
-				if (!process.env.UNIPILE_API_KEY || !process.env.UNIPILE_DSN) {
-					// Fallback to basic contact creation if Unipile config is missing
+				// Create Unipile service instance for profile fetching if enabled
+				if (!syncConfig.enableProfileEnrichment) {
+					// Fallback to basic contact creation if profile enrichment is disabled
 					return await contactService.upsertContact(
 						unipileAccount.id,
 						sender.id,
@@ -434,8 +448,8 @@ export const unipileNewMessage = inngest.createFunction(
 				}
 
 				const unipileService = createUnipileService({
-					apiKey: process.env.UNIPILE_API_KEY,
-					dsn: process.env.UNIPILE_DSN,
+					apiKey: env.UNIPILE_API_KEY,
+					dsn: env.UNIPILE_DSN,
 				});
 
 				return await createEnrichedContactFromSender(
@@ -461,6 +475,7 @@ export const unipileProfileView = inngest.createFunction(
 	{ event: "unipile/profile.view" },
 	async ({ event, step, services }) => {
 		const { data } = event;
+		const syncConfig = getCurrentSyncConfig();
 
 		const { account_id, provider = "linkedin", viewer, viewed_at } = data;
 		const {
@@ -500,9 +515,9 @@ export const unipileProfileView = inngest.createFunction(
 		// Also upsert the viewer as a contact using enriched profile data
 		if (viewer?.id) {
 			await step.run("upsert-viewer-contact", async () => {
-				// Create Unipile service instance for profile fetching if env vars are available
-				if (!process.env.UNIPILE_API_KEY || !process.env.UNIPILE_DSN) {
-					// Fallback to basic contact creation if Unipile config is missing
+				// Create Unipile service instance for profile fetching if enabled
+				if (!syncConfig.enableProfileEnrichment) {
+					// Fallback to basic contact creation if profile enrichment is disabled
 					return await contactService.upsertContact(
 						unipileAccount.id,
 						viewer.id,
@@ -516,6 +531,12 @@ export const unipileProfileView = inngest.createFunction(
 							provider_url: viewer.profile_url,
 							last_interaction: new Date(),
 						},
+					);
+				}
+
+				if (!process.env.UNIPILE_API_KEY || !process.env.UNIPILE_DSN) {
+					throw new Error(
+						"Unipile credentials missing but profile enrichment is enabled",
 					);
 				}
 
@@ -547,11 +568,10 @@ export const unipileProfileView = inngest.createFunction(
  * - All chat attendees/participants
  * - Contact information
  *
- * Development Mode Optimization:
- * When NODE_ENV === "development", limits are reduced for faster testing:
- * - Chat limit: 3 (instead of 1000)
- * - Messages per chat: 5 (instead of 100)
- * - Message batch size: 5 (instead of 50)
+ * Configuration:
+ * Sync limits and behavior are controlled by the global sync configuration
+ * in ~/config/sync.config.ts. This allows easy modification of limits
+ * for both development and production environments.
  */
 export const unipileHistoricalMessageSync = inngest.createFunction(
 	{ id: "unipile-historical-message-sync" },
@@ -572,7 +592,7 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 			provider,
 			dsn,
 			api_key,
-			limit = process.env.NODE_ENV === "development" ? 3 : 1000, // Only sync 3 chats in dev mode
+			limit = getCurrentSyncConfig().chat.maxChats, // Use config for chat limit
 		}: UnipileHistoricalSyncRequest = data;
 
 		// Find the user and Unipile account
@@ -624,21 +644,15 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 			accountStatus: connectivityTest.accountInfo?.status,
 		});
 
-		// Development mode optimization for faster testing
-		const isDevelopmentMode = process.env.NODE_ENV === "development";
-		if (isDevelopmentMode) {
-			console.log("🔧 Development mode detected - using reduced sync limits:", {
-				chatLimit: limit,
-				messageLimit: 5,
-				messageBatchSize: 5,
-			});
-		}
+		// Log sync configuration
+		const syncConfig = getCurrentSyncConfig();
+		logSyncConfig();
 
 		let totalChatsProcessed = 0;
 		let totalMessagesProcessed = 0;
 		let totalAttendeesProcessed = 0;
 		let cursor: string | undefined;
-		const pageSize = 50; // Smaller page size for comprehensive sync
+		const pageSize = syncConfig.chat.pageSize;
 
 		// Step 1: Sync all chats/conversations
 		console.log("🚀 Starting chat sync for account:", {
@@ -646,24 +660,31 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 			provider,
 			user_id,
 			limit,
-			isDevelopmentMode,
+			environment: syncConfig.environment,
+			isDev: syncConfig.environment === "development",
 		});
 
+		if (syncConfig.environment === "development") {
+			console.log("🔧 DEV MODE: Will fetch maximum", limit, "chats and stop");
+		}
+
 		while (totalChatsProcessed < limit) {
+			const batchSize = Math.min(pageSize, limit - totalChatsProcessed);
 			const chatsResponse = await step.run(
 				`fetch-chats-${Math.floor(totalChatsProcessed / pageSize)}`,
 				async () => {
 					console.log("📡 Fetching chats batch:", {
 						account_id,
-						limit: Math.min(pageSize, limit - totalChatsProcessed),
+						limit: batchSize,
 						cursor,
 						provider,
 						totalChatsProcessed,
+						remainingChats: limit - totalChatsProcessed,
 					});
 
 					const response = await unipileService.listChats({
 						account_id,
-						limit: Math.min(pageSize, limit - totalChatsProcessed),
+						limit: batchSize,
 						cursor,
 						provider: "LINKEDIN",
 					});
@@ -693,7 +714,16 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 						let batchMessages = 0;
 						let batchAttendees = 0;
 
-						for (const chatData of chatsResponse.items) {
+						// Process only the chats we actually need (respect the limit)
+						const chatsToProcess = chatsResponse.items.slice(
+							0,
+							limit - totalChatsProcessed,
+						);
+						console.log(
+							`📊 Processing ${chatsToProcess.length} chats (${totalChatsProcessed}/${limit} total)`,
+						);
+
+						for (const chatData of chatsToProcess) {
 							try {
 								// Upsert the chat using the service
 								const chat = await unipileChatService.upsertChat(
@@ -732,56 +762,47 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 
 								batchChats++;
 
+								// Break if we've reached our limit
+								if (totalChatsProcessed + batchChats >= limit) {
+									console.log(
+										`🚫 Reached chat limit (${limit}), stopping processing`,
+									);
+									break;
+								}
+
 								// Step 3: Sync attendees for this chat
 								try {
 									const attendeesResponse =
 										await unipileService.listChatAttendees({
 											chat_id: chatData.id,
 											account_id,
-											limit: 100, // Get all attendees
+											limit: syncConfig.attendee.maxPerChat,
 										});
 
 									for (const attendeeData of attendeesResponse.items || []) {
+										// First create/upsert the contact (if not self)
+										let contactId: string | null = null;
+										if (attendeeData.is_self !== 1) {
+											const contact = await createContactFromAttendee(
+												unipileContactService,
+												unipileAccount.id,
+												attendeeData,
+											);
+											contactId = contact?.id || null;
+										}
+
+										// Then create the attendee with a reference to the contact
 										await unipileChatService.upsertAttendee(
 											chat.id,
 											attendeeData.provider_id, // Use provider_id as the external_id
+											contactId, // Reference to the contact
 											{
-												name: attendeeData.name,
-												display_name: attendeeData.name, // Use name as display_name
-												first_name: undefined, // Not available in new API structure
-												last_name: undefined, // Not available in new API structure
-												username: attendeeData.specifics?.member_urn, // Use member_urn as username
-												profile_image_url: attendeeData.picture_url,
-												profile_url: attendeeData.profile_url,
-												headline: attendeeData.specifics?.headline,
-												is_contact:
-													attendeeData.specifics?.network_distance !==
-													"OUT_OF_NETWORK",
 												is_self: attendeeData.is_self || 0,
 												hidden: attendeeData.hidden || 0,
-												member_urn: attendeeData.specifics?.member_urn,
-												network_distance:
-													attendeeData.specifics?.network_distance,
-												occupation: attendeeData.specifics?.occupation,
-												location: attendeeData.specifics?.location,
-												pending_invitation:
-													attendeeData.specifics?.pending_invitation || false,
-												contact_info: attendeeData.specifics?.contact_info
-													? attendeeData.specifics.contact_info
-													: undefined,
 											},
 										);
 
 										batchAttendees++;
-
-										// Create enriched contact using profile data
-										await createEnrichedContactFromAttendee(
-											unipileService,
-											unipileContactService,
-											unipileAccount.id,
-											account_id,
-											attendeeData,
-										);
 									}
 								} catch (attendeeError) {
 									console.warn(
@@ -794,17 +815,17 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 								try {
 									let messageCursor: string | undefined;
 									let chatMessagesProcessed = 0;
-									// Use smaller limits in development for faster testing
-									const messageLimit =
-										process.env.NODE_ENV === "development" ? 5 : 100; // Limit per chat
-									const messageBatchSize =
-										process.env.NODE_ENV === "development" ? 5 : 50;
+									// Use config for message sync limits
+									const messageLimit = syncConfig.message.maxPerChat;
+									const messageBatchSize = syncConfig.message.batchSize;
 
-									console.log("📨 Message sync config:", {
-										messageLimit,
-										messageBatchSize,
-										isDevelopment: process.env.NODE_ENV === "development",
-									});
+									if (syncConfig.enableDetailedLogging) {
+										console.log("📨 Message sync config:", {
+											messageLimit,
+											messageBatchSize,
+											environment: syncConfig.environment,
+										});
+									}
 
 									while (chatMessagesProcessed < messageLimit) {
 										const messagesResponse =
@@ -843,7 +864,8 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 															: undefined,
 												},
 												{
-													external_chat_id: chat.id,
+													chat: { connect: { id: chat.id } }, // Link to internal chat record
+													external_chat_id: chatData.id, // Store external API chat ID
 													sender_id: messageData.sender_id || undefined,
 													recipient_id: undefined, // Not available in new API structure
 													message_type:
@@ -956,12 +978,32 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 			totalMessagesProcessed += processedMessages;
 			totalAttendeesProcessed += processedAttendees;
 
-			cursor = chatsResponse.cursor;
+			console.log(
+				`📊 Batch complete: ${totalChatsProcessed}/${limit} chats processed`,
+			);
 
-			// Break if no more pages
-			if (!cursor) {
+			// Break if we've reached our limit
+			if (totalChatsProcessed >= limit) {
+				console.log(
+					`✅ Reached chat limit (${totalChatsProcessed}/${limit}), stopping sync`,
+				);
 				break;
 			}
+
+			// In dev mode, ALWAYS stop after the first page regardless of cursor availability
+			if (syncConfig.environment === "development") {
+				console.log("🔧 DEV MODE: Stopping after first page as configured");
+				break;
+			}
+
+			// Break if no more pages
+			if (!chatsResponse.cursor) {
+				console.log("✅ No more pages available, stopping sync");
+				break;
+			}
+
+			cursor = chatsResponse.cursor;
+			console.log(`➡️ Continuing with cursor: ${cursor}`);
 		}
 
 		// Update sync status using the service
@@ -1026,7 +1068,7 @@ export const unipileAccountConnected = inngest.createFunction(
 					provider,
 					dsn: process.env.UNIPILE_DSN,
 					api_key: process.env.UNIPILE_API_KEY,
-					limit: process.env.NODE_ENV === "development" ? 3 : 1000, // Only sync 3 chats in dev mode
+					limit: getCurrentSyncConfig().chat.maxChats,
 				},
 			});
 		}
@@ -1087,10 +1129,12 @@ export const unipileBulkMessageSync = inngest.createFunction(
 	{ event: "unipile/messages.bulk_sync" },
 	async ({ event, step, services }) => {
 		const { data } = event;
+		const syncConfig = getCurrentSyncConfig();
 		const {
 			unipileAccountService: accountService,
 			unipileMessageService: messageService,
 			unipileContactService: contactService,
+			unipileChatService: chatService,
 		} = services;
 		const { account_id, provider, messages } = data;
 
@@ -1122,6 +1166,22 @@ export const unipileBulkMessageSync = inngest.createFunction(
 						async (messageData: UnipileApiMessage) => {
 							const isOutgoing = messageData.is_sender === 1;
 
+							// Find the internal chat record by external chat ID if available
+							let internalChat = null;
+							if (messageData.chat_id) {
+								try {
+									internalChat = await chatService.findChatByExternalId(
+										unipileAccount.id,
+										messageData.chat_id,
+									);
+								} catch (error) {
+									console.warn(
+										`Failed to find internal chat for external chat ID ${messageData.chat_id}:`,
+										error,
+									);
+								}
+							}
+
 							// Upsert message using the service
 							const message = await messageService.upsertMessage(
 								unipileAccount.id,
@@ -1131,7 +1191,10 @@ export const unipileBulkMessageSync = inngest.createFunction(
 									is_read: messageData.seen === 1,
 								},
 								{
-									external_chat_id: messageData.chat_id,
+									...(internalChat
+										? { chat: { connect: { id: internalChat.id } } }
+										: {}), // Link to internal chat if found
+									external_chat_id: messageData.chat_id, // Store external API chat ID
 									sender_id: messageData.sender_id,
 									recipient_id: undefined, // Not available in new API structure
 									message_type:
@@ -1147,8 +1210,17 @@ export const unipileBulkMessageSync = inngest.createFunction(
 
 							// Create enriched contact if this is from someone else
 							if (!isOutgoing && messageData.sender_id) {
-								// Create Unipile service instance if env vars are available
-								if (process.env.UNIPILE_API_KEY && process.env.UNIPILE_DSN) {
+								// Create enriched contact if profile enrichment is enabled
+								if (syncConfig.enableProfileEnrichment) {
+									if (
+										!process.env.UNIPILE_API_KEY ||
+										!process.env.UNIPILE_DSN
+									) {
+										throw new Error(
+											"Unipile credentials missing but profile enrichment is enabled",
+										);
+									}
+
 									const unipileService = createUnipileService({
 										apiKey: process.env.UNIPILE_API_KEY,
 										dsn: process.env.UNIPILE_DSN,
@@ -1163,12 +1235,28 @@ export const unipileBulkMessageSync = inngest.createFunction(
 										messageData.sender_urn,
 									);
 								} else {
-									// Fallback to basic contact creation
+									// Fallback to basic contact creation using available message data
+									const sender = messageData.sender;
+									const fullName =
+										sender?.display_name ||
+										sender?.name ||
+										(sender?.first_name && sender?.last_name
+											? `${sender.first_name} ${sender.last_name}`
+											: undefined) ||
+										messageData.sender_urn ||
+										undefined;
+
 									await contactService.upsertContact(
 										unipileAccount.id,
 										messageData.sender_id,
 										{
-											full_name: messageData.sender_urn || undefined,
+											full_name: fullName,
+											first_name: sender?.first_name,
+											last_name: sender?.last_name,
+											headline: sender?.headline,
+											profile_image_url:
+												sender?.profile_picture_url || sender?.avatar_url,
+											provider_url: sender?.profile_url,
 											last_interaction: new Date(),
 										},
 									);

@@ -75,21 +75,17 @@ export class UnipileService {
 	): Promise<UnipileApiResponse<UnipileApiChat>> {
 		const params = new URLSearchParams();
 
-		// account_id is required for most Unipile API calls
-		params.set("account_id", options.account_id);
-
-		// Add pagination parameters if provided
-		if (options.limit) params.set("limit", options.limit.toString());
-		if (options.cursor) params.set("cursor", options.cursor);
-		if (options.start) params.set("start", options.start.toString());
-
-		// Provider filter is optional
-		if (options.provider) params.set("provider", options.provider);
-
-		console.log("🔍 Fetching chats with params:", Object.fromEntries(params));
-
 		const response = await this.client.get<UnipileApiResponse<UnipileApiChat>>(
 			`/chats?${params.toString()}`,
+			{
+				params: {
+					account_id: options.account_id,
+					limit: options.limit,
+					cursor: options.cursor,
+					start: options.start,
+					account_type: options.provider,
+				},
+			},
 		);
 
 		console.log("📊 Chats response:", {

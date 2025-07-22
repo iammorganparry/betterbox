@@ -1,4 +1,8 @@
-import type { Prisma, PrismaClient } from "../../../generated/prisma";
+import type {
+	Prisma,
+	PrismaClient,
+	UnipileAttachmentType,
+} from "../../../generated/prisma";
 import type {
 	UnipileMessage,
 	UnipileMessageAttachment,
@@ -513,11 +517,7 @@ export class UnipileMessageService {
 		chatId: string,
 		attachmentType?: string,
 		limit = 50,
-	): Promise<
-		Prisma.UnipileMessageAttachmentGetPayload<{
-			include: { message: true };
-		}>[]
-	> {
+	) {
 		return await this.db.unipileMessageAttachment.findMany({
 			where: {
 				message: {
@@ -525,7 +525,9 @@ export class UnipileMessageService {
 					is_deleted: false,
 				},
 				is_deleted: false,
-				...(attachmentType ? { attachment_type: attachmentType } : {}),
+				...(attachmentType
+					? { attachment_type: attachmentType as UnipileAttachmentType }
+					: {}),
 			},
 			include: {
 				message: true,

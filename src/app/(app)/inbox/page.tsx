@@ -50,249 +50,31 @@ interface MessageData {
 }
 
 export default function InboxPage() {
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-
-  // Fetch chats
-  const {
-    data: chatsData,
-    isLoading: chatsLoading,
-    error: chatsError,
-  } = api.inbox.getChats.useQuery({
-    limit: 50,
-    provider: "linkedin",
-  });
-
-  // Fetch messages for selected chat
-  const { data: messagesData, isLoading: messagesLoading } =
-    api.inbox.getChatMessages.useQuery(
-      { chatId: selectedChatId ?? "", limit: 100 },
-      { enabled: !!selectedChatId }
-    );
-
-  // Fetch chat details for selected chat
-  const { data: chatDetails } = api.inbox.getChatDetails.useQuery(
-    { chatId: selectedChatId ?? "" },
-    { enabled: !!selectedChatId }
-  );
-
-  const handleChatSelect = (chatId: string) => {
-    setSelectedChatId(chatId);
-  };
-
-  if (chatsError) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Card className="w-96">
-          <CardHeader>
-            <CardTitle className="text-destructive">
-              Error Loading Inbox
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground text-sm">
-              Failed to load your conversations. Please try again later.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const typedChats = (chatsData as ChatData[]) || [];
-  const typedMessages = (messagesData as MessageData[]) || [];
-  const typedChatDetails = chatDetails as
-    | { UnipileChatAttendee?: ChatAttendee[] }
-    | undefined;
-
-  if (!selectedChatId) {
-    return (
-      <div className="flex h-full w-full">
-        {/* Empty State */}
-        <div className="flex flex-1 items-center justify-center bg-muted/10">
-          <div className="text-center">
-            <MessageCircle className="mx-auto mb-4 h-16 w-16 text-muted-foreground" />
-            <h3 className="mb-2 font-medium text-xl">Select a conversation</h3>
-            <p className="mx-auto max-w-sm text-muted-foreground text-sm">
-              Choose a conversation from your inbox to view and respond to
-              messages
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Selected chat view
-  const selectedAttendee = typedChatDetails?.UnipileChatAttendee?.find(
-    (a: ChatAttendee) => a.is_self !== 1
-  );
-
   return (
-    <div className="flex h-full">
-      {/* Message View */}
-      <div className="flex flex-1 flex-col bg-background">
-        {/* Header */}
-        <div className="border-b bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedChatId(null)}
-                className="md:hidden"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={selectedAttendee?.profile_image_url || ""} />
-                <AvatarFallback>
-                  {selectedAttendee?.name?.charAt(0)?.toUpperCase() || "?"}
-                </AvatarFallback>
-              </Avatar>
-
-              <div>
-                <h3 className="font-medium text-sm">
-                  {selectedAttendee?.name || "Unknown Contact"}
-                </h3>
-                {selectedAttendee?.headline && (
-                  <p className="text-muted-foreground text-xs">
-                    {selectedAttendee.headline}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              {selectedAttendee?.profile_url && (
-                <Button variant="ghost" size="sm" asChild>
-                  <a
-                    href={selectedAttendee.profile_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </Button>
-              )}
-              <Button variant="ghost" size="sm">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </div>
+    <div className="flex h-full flex-col">
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center text-muted-foreground">
+          <div className="mb-4">
+            <svg
+              className="mx-auto h-16 w-16 text-gray-300"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-label="Chat icon"
+            >
+              <title>Chat icon</title>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              />
+            </svg>
           </div>
-        </div>
-
-        {/* Messages */}
-        <ScrollArea className="flex-1 p-6">
-          {messagesLoading ? (
-            <div className="space-y-6">
-              {Array.from({ length: 5 }, (_, i) => i).map((i) => (
-                <div key={`message-loading-${i}`} className="flex space-x-3">
-                  <Skeleton className="h-8 w-8 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-20 w-80" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="max-w-4xl space-y-6">
-              {typedMessages.map((message) => {
-                const messageAttendee =
-                  typedChatDetails?.UnipileChatAttendee?.find(
-                    (a: ChatAttendee) => a.external_id === message.sender_id
-                  );
-
-                return (
-                  <div
-                    key={message.id}
-                    className={cn(
-                      "flex space-x-3",
-                      message.is_outgoing && "flex-row-reverse space-x-reverse"
-                    )}
-                  >
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage
-                        src={
-                          message.is_outgoing
-                            ? ""
-                            : messageAttendee?.profile_image_url || ""
-                        }
-                      />
-                      <AvatarFallback className="text-xs">
-                        {message.is_outgoing
-                          ? "You"
-                          : messageAttendee?.name?.charAt(0)?.toUpperCase() ||
-                            "?"}
-                      </AvatarFallback>
-                    </Avatar>
-
-                    <div
-                      className={cn(
-                        "max-w-lg",
-                        message.is_outgoing && "text-right"
-                      )}
-                    >
-                      <div className="mb-2 flex items-center space-x-2">
-                        <p className="font-medium text-muted-foreground text-xs">
-                          {message.is_outgoing
-                            ? "You"
-                            : messageAttendee?.name || "Unknown"}
-                        </p>
-                        {message.sent_at && (
-                          <p className="text-muted-foreground text-xs">
-                            {formatDistanceToNow(new Date(message.sent_at), {
-                              addSuffix: true,
-                            })}
-                          </p>
-                        )}
-                      </div>
-
-                      <div
-                        className={cn(
-                          "rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                          message.is_outgoing
-                            ? "bg-blue-500 text-white"
-                            : "border bg-muted"
-                        )}
-                      >
-                        {message.content || "No content"}
-                      </div>
-
-                      {message.is_outgoing && (
-                        <div className="mt-1 flex justify-end">
-                          {message.is_read ? (
-                            <CheckCheck className="h-3 w-3 text-muted-foreground" />
-                          ) : (
-                            <Check className="h-3 w-3 text-muted-foreground" />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </ScrollArea>
-
-        {/* Message Input */}
-        <div className="border-t bg-background p-4">
-          <div className="flex max-w-4xl items-end space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <textarea
-                  placeholder="Type a message..."
-                  className="max-h-32 min-h-[44px] w-full resize-none rounded-2xl border border-input bg-background px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  rows={1}
-                />
-              </div>
-            </div>
-            <Button size="sm" className="h-11 w-11 rounded-full p-0">
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
+          <h3 className="font-medium text-lg">Select a conversation</h3>
+          <p className="text-sm">
+            Choose a chat from your inbox to view and respond to messages
+          </p>
         </div>
       </div>
     </div>

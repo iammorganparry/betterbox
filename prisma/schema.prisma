@@ -187,33 +187,21 @@ model UnipileChat {
 // Represents chat participants/attendees
 // API Reference: GET /chats/{chat_id}/attendees
 model UnipileChatAttendee {
-  id                 String                  @id @default(uuid())
-  chat               UnipileChat             @relation(fields: [chat_id], references: [id])
-  chat_id            String
-  external_id        String // Maps to UnipileApiChatAttendee.provider_id - Participant's provider ID (LinkedIn, etc.)
-  name               String? // Maps to UnipileApiChatAttendee.name
-  display_name       String? // Maps to UnipileApiChatAttendee.name (used as display_name)
-  first_name         String? // Not available in new API structure
-  last_name          String? // Not available in new API structure
-  username           String? // Maps to UnipileApiChatAttendee.specifics.member_urn - LinkedIn URN
-  profile_image_url  String? // Maps to UnipileApiChatAttendee.picture_url
-  profile_url        String? // Maps to UnipileApiChatAttendee.profile_url
-  headline           String? // Maps to UnipileApiChatAttendee.specifics.headline
-  is_contact         Boolean                 @default(false) // Maps to network_distance !== "OUT_OF_NETWORK"
-  is_self            Int                     @default(0) // Maps to UnipileApiChatAttendee.is_self - 0 or 1
-  hidden             Int                     @default(0) // Maps to UnipileApiChatAttendee.hidden - 0 or 1
-  member_urn         String? // Maps to UnipileApiChatAttendee.specifics.member_urn - LinkedIn member URN
-  network_distance   UnipileNetworkDistance? // Maps to UnipileApiChatAttendee.specifics.network_distance
-  occupation         String? // Maps to UnipileApiChatAttendee.specifics.occupation
-  location           String? // Maps to UnipileApiChatAttendee.specifics.location
-  pending_invitation Boolean                 @default(false) // Maps to UnipileApiChatAttendee.specifics.pending_invitation
-  contact_info       Json? // Maps to UnipileApiChatAttendee.specifics.contact_info - emails, phone numbers, etc.
-  is_deleted         Boolean                 @default(false)
-  created_at         DateTime                @default(now())
-  updated_at         DateTime                @updatedAt
+  id          String          @id @default(uuid())
+  chat        UnipileChat     @relation(fields: [chat_id], references: [id])
+  chat_id     String
+  contact     UnipileContact? @relation(fields: [contact_id], references: [id])
+  contact_id  String? // Reference to the contact - null for self attendees
+  external_id String // Maps to UnipileApiChatAttendee.provider_id - Participant's provider ID (LinkedIn, etc.)
+  is_self     Int             @default(0) // Maps to UnipileApiChatAttendee.is_self - 0 or 1
+  hidden      Int             @default(0) // Maps to UnipileApiChatAttendee.hidden - 0 or 1
+  is_deleted  Boolean         @default(false)
+  created_at  DateTime        @default(now())
+  updated_at  DateTime        @updatedAt
 
   @@unique([chat_id, external_id])
   @@index([chat_id])
+  @@index([contact_id])
 }
 
 // Represents messages from Unipile (LinkedIn messages, etc.)
@@ -296,27 +284,28 @@ model UnipileMessageAttachment {
 // Represents contacts/profiles from Unipile
 // API Reference: GET /users/{identifier}, from UnipileApiParticipant objects in chats/messages
 model UnipileContact {
-  id                 String                  @id @default(uuid())
-  unipile_account    UnipileAccount          @relation(fields: [unipile_account_id], references: [id])
-  unipile_account_id String
-  external_id        String // Maps to UnipileApiParticipant.id or provider_id - Contact's provider ID
-  provider_url       String? // Maps to UnipileApiParticipant.profile_url - LinkedIn profile URL, etc.
-  full_name          String? // Maps to UnipileApiParticipant.display_name or name
-  first_name         String? // Maps to UnipileApiParticipant.first_name (legacy - not available in new API)
-  last_name          String? // Maps to UnipileApiParticipant.last_name (legacy - not available in new API)
-  headline           String? // Maps to UnipileApiParticipant.headline or specifics.headline - Job title, bio, etc.
-  profile_image_url  String? // Maps to UnipileApiParticipant.profile_picture_url, avatar_url, or picture_url
-  last_interaction   DateTime? // Computed field - Last message or interaction timestamp
-  is_connection      Boolean                 @default(false) // Maps to network_distance !== "OUT_OF_NETWORK" or is_contact
-  member_urn         String? // Maps to UnipileApiChatAttendee.specifics.member_urn - LinkedIn member URN
-  network_distance   UnipileNetworkDistance? // Maps to UnipileApiChatAttendee.specifics.network_distance
-  occupation         String? // Maps to UnipileApiChatAttendee.specifics.occupation
-  location           String? // Maps to UnipileApiChatAttendee.specifics.location
-  pending_invitation Boolean                 @default(false) // Maps to UnipileApiChatAttendee.specifics.pending_invitation
-  contact_info       Json? // Maps to UnipileApiChatAttendee.specifics.contact_info - emails, phone numbers, websites, social handles
-  is_deleted         Boolean                 @default(false)
-  created_at         DateTime                @default(now())
-  updated_at         DateTime                @updatedAt
+  id                  String                  @id @default(uuid())
+  unipile_account     UnipileAccount          @relation(fields: [unipile_account_id], references: [id])
+  unipile_account_id  String
+  external_id         String // Maps to UnipileApiParticipant.id or provider_id - Contact's provider ID
+  provider_url        String? // Maps to UnipileApiParticipant.profile_url - LinkedIn profile URL, etc.
+  full_name           String? // Maps to UnipileApiParticipant.display_name or name
+  first_name          String? // Maps to UnipileApiParticipant.first_name (legacy - not available in new API)
+  last_name           String? // Maps to UnipileApiParticipant.last_name (legacy - not available in new API)
+  headline            String? // Maps to UnipileApiParticipant.headline or specifics.headline - Job title, bio, etc.
+  profile_image_url   String? // Maps to UnipileApiParticipant.profile_picture_url, avatar_url, or picture_url
+  last_interaction    DateTime? // Computed field - Last message or interaction timestamp
+  is_connection       Boolean                 @default(false) // Maps to network_distance !== "OUT_OF_NETWORK" or is_contact
+  member_urn          String? // Maps to UnipileApiChatAttendee.specifics.member_urn - LinkedIn member URN
+  network_distance    UnipileNetworkDistance? // Maps to UnipileApiChatAttendee.specifics.network_distance
+  occupation          String? // Maps to UnipileApiChatAttendee.specifics.occupation
+  location            String? // Maps to UnipileApiChatAttendee.specifics.location
+  pending_invitation  Boolean                 @default(false) // Maps to UnipileApiChatAttendee.specifics.pending_invitation
+  contact_info        Json? // Maps to UnipileApiChatAttendee.specifics.contact_info - emails, phone numbers, websites, social handles
+  is_deleted          Boolean                 @default(false)
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+  UnipileChatAttendee UnipileChatAttendee[]
 
   @@unique([unipile_account_id, external_id])
   @@index([unipile_account_id])

@@ -124,6 +124,9 @@ export class UnipileChatService {
 					? {
 							UnipileChatAttendee: {
 								where: { is_deleted: false },
+								include: {
+									contact: true, // Include the related contact data
+								},
 							},
 						}
 					: {}),
@@ -176,6 +179,9 @@ export class UnipileChatService {
 					? {
 							UnipileChatAttendee: {
 								where: { is_deleted: false },
+								include: {
+									contact: true, // Include the related contact data
+								},
 							},
 						}
 					: {}),
@@ -235,8 +241,11 @@ export class UnipileChatService {
 	async upsertAttendee(
 		chatId: string,
 		externalId: string,
-		updateData: Partial<UpdateAttendeeData>,
-		createData?: Partial<Prisma.UnipileChatAttendeeCreateWithoutChatInput>,
+		contactId: string | null, // Reference to the contact
+		attendeeData: {
+			is_self?: number;
+			hidden?: number;
+		},
 	): Promise<UnipileChatAttendee> {
 		return await this.db.unipileChatAttendee.upsert({
 			where: {
@@ -246,16 +255,27 @@ export class UnipileChatService {
 				},
 			},
 			update: {
-				...updateData,
+				...(contactId
+					? { contact: { connect: { id: contactId } } }
+					: { contact: { disconnect: true } }),
+				is_self: attendeeData.is_self ?? 0,
+				hidden: attendeeData.hidden ?? 0,
 				updated_at: new Date(),
 			},
 			create: {
 				chat: {
 					connect: { id: chatId },
 				},
+				...(contactId
+					? {
+							contact: {
+								connect: { id: contactId },
+							},
+						}
+					: {}),
 				external_id: externalId,
-				is_contact: false,
-				...createData,
+				is_self: attendeeData.is_self ?? 0,
+				hidden: attendeeData.hidden ?? 0,
 			},
 		});
 	}
@@ -374,20 +394,28 @@ export class UnipileChatService {
 					{
 						UnipileChatAttendee: {
 							some: {
-								OR: [
-									{
-										name: {
-											contains: searchTerm,
-											mode: "insensitive",
+								contact: {
+									OR: [
+										{
+											full_name: {
+												contains: searchTerm,
+												mode: "insensitive",
+											},
 										},
-									},
-									{
-										display_name: {
-											contains: searchTerm,
-											mode: "insensitive",
+										{
+											first_name: {
+												contains: searchTerm,
+												mode: "insensitive",
+											},
 										},
-									},
-								],
+										{
+											last_name: {
+												contains: searchTerm,
+												mode: "insensitive",
+											},
+										},
+									],
+								},
 								is_deleted: false,
 							},
 						},
@@ -397,6 +425,9 @@ export class UnipileChatService {
 			include: {
 				UnipileChatAttendee: {
 					where: { is_deleted: false },
+					include: {
+						contact: true,
+					},
 				},
 			},
 			orderBy: { last_message_at: "desc" },
@@ -413,6 +444,9 @@ export class UnipileChatService {
 			include: {
 				UnipileChatAttendee: {
 					where: { is_deleted: false },
+					include: {
+						contact: true, // Include the related contact data
+					},
 				},
 				UnipileMessage: {
 					where: { is_deleted: false },
@@ -457,6 +491,9 @@ export class UnipileChatService {
 				UnipileChatAttendee: {
 					where: { is_deleted: false },
 					take: 3, // Show up to 3 attendees
+					include: {
+						contact: true, // Include the related contact data
+					},
 				},
 				UnipileMessage: {
 					where: { is_deleted: false },

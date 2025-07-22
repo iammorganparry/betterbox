@@ -52,6 +52,23 @@ export class UnipileContactService {
 		updateData: Partial<UpdateContactData>,
 		createData?: Partial<Prisma.UnipileContactCreateWithoutUnipile_accountInput>,
 	): Promise<UnipileContact> {
+		// Extract simple values from updateData for creation
+		// Prisma update operations need to be converted to direct values for create
+		const createFields: Record<string, unknown> = {};
+
+		for (const [key, value] of Object.entries(updateData)) {
+			if (value != null && typeof value === "object" && "set" in value) {
+				// Handle Prisma field update operations like { set: "value" }
+				createFields[key] = value.set;
+			} else if (value != null && typeof value !== "object") {
+				// Handle direct values
+				createFields[key] = value;
+			} else if (value != null) {
+				// Handle other direct object values (like Json fields)
+				createFields[key] = value;
+			}
+		}
+
 		return await this.db.unipileContact.upsert({
 			where: {
 				unipile_account_id_external_id: {
@@ -69,7 +86,9 @@ export class UnipileContactService {
 				},
 				external_id: externalId,
 				is_connection: false,
-				...createData,
+				// Apply the extracted rich data during creation
+				...createFields,
+				...createData, // createData can override extracted fields if needed
 			},
 		});
 	}
