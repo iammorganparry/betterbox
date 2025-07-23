@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { useState } from "react";
-import { Trash2, MoreHorizontal } from "lucide-react";
+import { Trash2, MoreHorizontal, CheckCheck } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
@@ -41,9 +41,10 @@ export default function ChatPage() {
   const params = useParams();
   const chatId = params?.chatId as string;
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [markingAsRead, setMarkingAsRead] = useState(false);
 
   // Fetch selected chat details and messages
-  const { data: chatDetails, isLoading: chatLoading } =
+  const { data: chatDetails, isLoading: chatLoading, refetch: refetchChatDetails } =
     api.inbox.getChatDetails.useQuery(
       { chatId: chatId || "" },
       { enabled: !!chatId }
@@ -70,11 +71,31 @@ export default function ChatPage() {
     },
   });
 
+  // Mark chat as read mutation
+  const markChatAsReadMutation = api.inbox.markChatAsRead.useMutation({
+    onSuccess: () => {
+      toast.success("Chat marked as read");
+      // Refetch chat details to update the UI
+      void refetchChatDetails();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to mark chat as read");
+    },
+    onSettled: () => {
+      setMarkingAsRead(false);
+    },
+  });
+
   const handleDeleteMessage = async (messageId: string) => {
     if (window.confirm("Are you sure you want to delete this message? This action cannot be undone.")) {
       setDeletingMessageId(messageId);
       deleteMessageMutation.mutate({ messageId });
     }
+  };
+
+  const handleMarkAsRead = () => {
+    setMarkingAsRead(true);
+    markChatAsReadMutation.mutate({ chatId });
   };
 
   if (!chatId) {
@@ -105,46 +126,64 @@ export default function ChatPage() {
       {/* Header */}
       {chatDetails && (
         <div className="border-b p-4">
-          <div className="flex items-center gap-3">
-            {chatDetails.UnipileChatAttendee?.map((attendee: ChatAttendee) => {
-              if (attendee.is_self !== 1 && attendee.contact) {
-                const contact = attendee.contact;
-                const displayName =
-                  contact.full_name ||
-                  [contact.first_name, contact.last_name]
-                    .filter(Boolean)
-                    .join(" ") ||
-                  "Unknown Contact";
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {chatDetails.UnipileChatAttendee?.map((attendee: ChatAttendee) => {
+                if (attendee.is_self !== 1 && attendee.contact) {
+                  const contact = attendee.contact;
+                  const displayName =
+                    contact.full_name ||
+                    [contact.first_name, contact.last_name]
+                      .filter(Boolean)
+                      .join(" ") ||
+                    "Unknown Contact";
 
-                return (
-                  <div key={attendee.id} className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage
-                        src={contact.profile_image_url || undefined}
-                        alt={displayName}
-                      />
-                      <AvatarFallback>
-                        {displayName
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .toUpperCase()
-                          .slice(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h2 className="font-medium text-lg">{displayName}</h2>
-                      {contact.headline && (
-                        <p className="text-sm text-muted-foreground">
-                          {contact.headline}
-                        </p>
-                      )}
+                  return (
+                    <div key={attendee.id} className="flex items-center gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage
+                          src={contact.profile_image_url || undefined}
+                          alt={displayName}
+                        />
+                        <AvatarFallback>
+                          {displayName
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .toUpperCase()
+                            .slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <h2 className="font-medium text-lg">{displayName}</h2>
+                        {contact.headline && (
+                          <p className="text-sm text-muted-foreground">
+                            {contact.headline}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              }
-              return null;
-            })}
+                  );
+                }
+                return null;
+              })}
+            </div>
+
+            {/* Chat actions */}
+            <div className="flex items-center gap-2">
+              {chatDetails.unread_count > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleMarkAsRead}
+                  disabled={markingAsRead}
+                  className="flex items-center gap-2"
+                >
+                  <CheckCheck className="h-4 w-4" />
+                  {markingAsRead ? "Marking as read..." : "Mark as read"}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       )}

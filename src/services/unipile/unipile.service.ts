@@ -9,6 +9,8 @@ import type {
 	UnipileApiChatWithAttendees,
 	UnipileApiSendMessageRequest,
 	UnipileApiSendMessageResponse,
+	UnipileApiPatchChatRequest,
+	UnipileApiPatchChatResponse,
 	UnipileSearchRequest,
 	UnipileSearchResponse,
 	UnipileApiAttachment,
@@ -190,6 +192,39 @@ export class UnipileService {
 			`/chats/${request.chat_id}/messages?${params.toString()}`,
 			request,
 		);
+		return response.data;
+	}
+
+	/**
+	 * Perform an action on a chat (mark as read, mute, archive, etc.)
+	 * API Reference: PATCH https://{subdomain}.unipile.com:{port}/api/v1/chats/{chat_id}
+	 */
+	async patchChat(
+		chatId: string,
+		request: UnipileApiPatchChatRequest,
+		accountId: string,
+	): Promise<UnipileApiPatchChatResponse> {
+		const params = new URLSearchParams({ account_id: accountId });
+
+		console.log("🔄 Performing chat action:", {
+			chatId,
+			action: request.action,
+			accountId,
+			value: request.value,
+		});
+
+		const response = await this.client.patch<UnipileApiPatchChatResponse>(
+			`/chats/${chatId}?${params.toString()}`,
+			request,
+		);
+
+		console.log("✅ Chat action response:", {
+			chatId: response.data?.chat_id,
+			action: response.data?.action,
+			success: response.data?.success,
+			updatedFields: response.data?.updated_fields,
+		});
+
 		return response.data;
 	}
 

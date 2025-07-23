@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import { createUnipileService } from "~/services/unipile/unipile.service";
+import { env } from "~/env";
 
 export const inboxRouter = createTRPCRouter({
 	/**
@@ -201,6 +203,85 @@ export const inboxRouter = createTRPCRouter({
 				throw new TRPCError({
 					code: "INTERNAL_SERVER_ERROR",
 					message: "Failed to fetch chat details",
+				});
+			}
+		}),
+
+	/**
+	 * Mark chat as read
+	 */
+	markChatAsRead: protectedProcedure
+		.input(
+			z.object({
+				chatId: z.string(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			try {
+				// First, get the chat details to find the external ID and account
+				const chat = await ctx.services.unipileChatService.getChatWithDetails(
+					input.chatId,
+				);
+
+				if (!chat) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Chat not found",
+					});
+				}
+
+				// Verify the chat belongs to the current user
+				if (chat.unipile_account.user_id !== ctx.userId) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "You can only mark your own chats as read",
+					});
+				}
+
+				// Skip if already read (unread_count is 0)
+				if (chat.unread_count === 0) {
+					return { success: true, message: "Chat is already marked as read" };
+				}
+
+				// Create Unipile service instance
+				const unipileService = createUnipileService({
+					apiKey: env.UNIPILE_API_KEY,
+					dsn: env.UNIPILE_DSN,
+				});
+
+				// Mark as read in Unipile first
+				const unipileResponse = await unipileService.patchChat(
+					chat.external_id, // Use external chat ID for Unipile
+					{ action: "mark_as_read" },
+					chat.unipile_account.account_id, // Use the account_id from the database
+				);
+
+				if (!unipileResponse.success) {
+					throw new TRPCError({
+						code: "BAD_GATEWAY",
+						message: "Failed to mark chat as read in Unipile",
+					});
+				}
+
+				// Update the database
+				const updatedChat = await ctx.services.unipileChatService.markChatAsRead(
+					input.chatId,
+				);
+
+				return { 
+					success: true, 
+					message: "Chat marked as read",
+					chat: updatedChat,
+					unipileResponse 
+				};
+			} catch (error) {
+				if (error instanceof TRPCError) {
+					throw error;
+				}
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to mark chat as read",
+					cause: error,
 				});
 			}
 		}),

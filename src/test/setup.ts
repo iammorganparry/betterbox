@@ -23,14 +23,20 @@ vi.mock('next/navigation', () => ({
 vi.mock('~/trpc/react', () => ({
   api: {
     inbox: {
-      deleteMessage: {
-        useMutation: vi.fn(),
-      },
-      getChatMessages: {
+      getChats: {
         useQuery: vi.fn(),
       },
       getChatDetails: {
         useQuery: vi.fn(),
+      },
+      getChatMessages: {
+        useQuery: vi.fn(),
+      },
+      deleteMessage: {
+        useMutation: vi.fn(),
+      },
+      markChatAsRead: {
+        useMutation: vi.fn(),
       },
     },
   },
@@ -41,5 +47,13 @@ vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+  },
+}))
+
+// Mock environment variables
+vi.mock('~/env', () => ({
+  env: {
+    UNIPILE_API_KEY: 'test-api-key',
+    UNIPILE_DSN: 'test-dsn',
   },
 })) 

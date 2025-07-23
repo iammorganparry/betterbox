@@ -1,6 +1,6 @@
 "use client";
 
-import { ArchiveX, Inbox, Send, Trash2, User } from "lucide-react";
+import { ArchiveX, Inbox, Send, Trash2, User, MoreHorizontal, CheckCheck } from "lucide-react";
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
@@ -14,10 +14,18 @@ import {
   SidebarHeader,
   SidebarInput,
 } from "~/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
+import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { sidebarConfig } from "./config/sidebar";
 import { api } from "~/trpc/react";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 
 interface ChatAttendee {
   id: string;
@@ -58,16 +66,37 @@ interface GroupedChat {
 export const InboxSidebar = () => {
   const [activeItem, setActiveItem] = useState(sidebarConfig[0]);
   const [showUnreadsOnly, setShowUnreadsOnly] = useState(false);
+  const [markingAsReadId, setMarkingAsReadId] = useState<string | null>(null);
   const router = useRouter();
   const params = useParams();
   const selectedChatId = params?.chatId as string;
 
   // Fetch chats from TRPC - removed provider filter to get all providers
-  const { data: chatsData, isLoading: chatsLoading } =
+  const { data: chatsData, isLoading: chatsLoading, refetch: refetchChats } =
     api.inbox.getChats.useQuery({
       limit: 50,
       // provider: "linkedin", // Removed to get all providers
     });
+
+  // Mark chat as read mutation
+  const markChatAsReadMutation = api.inbox.markChatAsRead.useMutation({
+    onSuccess: (data) => {
+      toast.success("Chat marked as read");
+      // Refetch chats to update the sidebar
+      void refetchChats();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to mark chat as read");
+    },
+    onSettled: () => {
+      setMarkingAsReadId(null);
+    },
+  });
+
+  const handleMarkAsRead = async (chatId: string, chatName: string) => {
+    setMarkingAsReadId(chatId);
+    markChatAsReadMutation.mutate({ chatId });
+  };
 
   const typedChats = (chatsData as ChatData[]) || [];
 
@@ -100,19 +129,19 @@ export const InboxSidebar = () => {
       name: contactName,
       date: chat.last_message_at
         ? formatDistanceToNow(new Date(chat.last_message_at), {
-            addSuffix: true,
-          })
+          addSuffix: true,
+        })
         : "",
       subject: contact?.headline || "LinkedIn Contact",
       teaser: "Latest conversation...",
       avatar: contact?.profile_image_url || null,
       initials: contactName
         ? contactName
-            .split(" ")
-            .map((n: string) => n[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2)
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2)
         : "UC",
       provider: chat.provider,
     };
@@ -171,42 +200,86 @@ export const InboxSidebar = () => {
                 {provider}
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                {groupedChats[provider]?.map((mail) => (
-                  <button
-                    type="button"
-                    key={mail.email}
-                    onClick={() => router.push(`/inbox/${mail.email}`)}
-                    className={`flex w-full flex-col items-start gap-2 whitespace-nowrap border-b p-4 text-left text-sm leading-tight last:border-b-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${
-                      selectedChatId === mail.email
+                {groupedChats[provider]?.map((mail) => {
+                  const chatData = chatsData?.find((chat) => chat.id === mail.email);
+                  const hasUnreadMessages = (chatData?.unread_count ?? 0) > 0;
+
+                  return (
+                    <div
+                      key={mail.email}
+                      className={`group flex w-full items-center border-b last:border-b-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${selectedChatId === mail.email
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : ""
-                    }`}
-                  >
-                    <div className="flex w-full items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage
-                          src={mail.avatar || undefined}
-                          alt={mail.name}
-                        />
-                        <AvatarFallback className="text-xs">
-                          {mail.initials}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex flex-1 items-center justify-between">
-                        <span className="font-medium">{mail.name}</span>
-                        <span className="text-muted-foreground text-xs">
-                          {mail.date}
+                        }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/inbox/${mail.email}`)}
+                        className="flex flex-1 flex-col items-start gap-2 whitespace-nowrap p-4 text-left text-sm leading-tight"
+                      >
+                        <div className="flex w-full items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage
+                              src={mail.avatar || undefined}
+                              alt={mail.name}
+                            />
+                            <AvatarFallback className="text-xs">
+                              {mail.initials}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-1 items-center justify-between">
+                            <span className="font-medium">{mail.name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-muted-foreground text-xs">
+                                {mail.date}
+                              </span>
+                              {/* Show unread indicator */}
+                              {hasUnreadMessages && (
+                                <div className="h-2 w-2 rounded-full bg-blue-500" />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="ml-11 font-medium text-muted-foreground">
+                          {mail.subject}
                         </span>
+                        <span className="ml-11 line-clamp-2 w-[260px] whitespace-break-spaces text-muted-foreground text-xs">
+                          {mail.teaser}
+                        </span>
+                      </button>
+
+                      {/* Context menu for chat actions */}
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity p-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {hasUnreadMessages && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkAsRead(mail.email, mail.name);
+                                }}
+                                disabled={markingAsReadId === mail.email}
+                              >
+                                <CheckCheck className="mr-2 h-4 w-4" />
+                                {markingAsReadId === mail.email ? "Marking as read..." : "Mark as read"}
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
-                    <span className="ml-11 font-medium text-muted-foreground">
-                      {mail.subject}
-                    </span>
-                    <span className="ml-11 line-clamp-2 w-[260px] whitespace-break-spaces text-muted-foreground text-xs">
-                      {mail.teaser}
-                    </span>
-                  </button>
-                ))}
+                  );
+                })}
               </SidebarGroupContent>
             </SidebarGroup>
           ))

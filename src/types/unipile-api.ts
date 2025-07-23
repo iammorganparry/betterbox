@@ -449,3 +449,37 @@ export interface UnipileApiCursor {
 	start: number;
 	params?: Record<string, unknown>;
 }
+
+// PATCH chat request/response types for chat actions (mark as read, mute, etc.)
+export interface UnipileApiPatchChatRequest {
+	/**
+	 * Action to perform on the chat
+	 * - "mark_as_read": Mark all messages in the chat as read
+	 * - "mark_as_unread": Mark the chat as having unread messages
+	 * - "mute": Mute the chat notifications
+	 * - "unmute": Unmute the chat notifications
+	 * - "archive": Archive the chat
+	 * - "unarchive": Unarchive the chat
+	 */
+	action: "mark_as_read" | "mark_as_unread" | "mute" | "unmute" | "archive" | "unarchive";
+	
+	/**
+	 * Optional value for certain actions (e.g., mute duration)
+	 */
+	value?: string | number;
+}
+
+export interface UnipileApiPatchChatResponse {
+	object: "ChatAction";
+	chat_id: string;
+	account_id: string;
+	action: string;
+	success: boolean;
+	message?: string;
+	updated_fields?: {
+		unread_count?: number;
+		archived?: number;
+		muted_until?: number;
+		read_only?: number;
+	};
+}

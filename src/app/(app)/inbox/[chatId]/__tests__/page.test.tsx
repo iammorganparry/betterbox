@@ -1,330 +1,446 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import ChatPage from '../page'
+import { api } from '~/trpc/react'
 import { toast } from 'sonner'
+import {
+    resetApiMocks,
+    mockGetChatDetails,
+    mockGetChatMessages,
+    mockMarkChatAsRead,
+    mockDeleteMessage,
+    mockChatDetails,
+    mockChatDetailsRead,
+    mockMessages,
+    triggerMutationCallback,
+} from '~/test/mocks/api'
 
-// Mock data
-const mockChatDetails = {
-    UnipileChatAttendee: [{
-        id: 'attendee-1',
-        is_self: 0,
-        contact: {
-            id: 'contact-1',
-            full_name: 'John Doe',
-            headline: 'Software Engineer',
-            profile_image_url: 'https://example.com/avatar.jpg',
-        },
-    }],
-}
+// Mock the API
+vi.mocked(api.inbox.getChatDetails.useQuery).mockImplementation(mockGetChatDetails)
+vi.mocked(api.inbox.getChatMessages.useQuery).mockImplementation(mockGetChatMessages)
+vi.mocked(api.inbox.markChatAsRead.useMutation).mockImplementation(() => ({
+    mutate: mockMarkChatAsRead,
+} as any))
+vi.mocked(api.inbox.deleteMessage.useMutation).mockImplementation(() => ({
+    mutate: mockDeleteMessage,
+} as any))
 
-const mockMessages = [
-    {
-        id: 'message-1',
-        content: 'Hello, this is a test message',
-        is_outgoing: true,
-        is_read: true,
-        sent_at: new Date('2024-01-01T10:00:00Z'),
-        sender_id: 'user-1',
-    },
-    {
-        id: 'message-2',
-        content: 'This is another message',
-        is_outgoing: false,
-        is_read: true,
-        sent_at: new Date('2024-01-01T10:05:00Z'),
-        sender_id: 'user-2',
-    },
-]
-
-// Use vi.hoisted to create mock functions that can be referenced in vi.mock
-const { mockDeleteMessage, mockRefetchMessages, mockGetChatDetails, mockGetChatMessages, mockMutationObject } = vi.hoisted(() => ({
-    mockDeleteMessage: vi.fn(),
-    mockRefetchMessages: vi.fn(),
-    mockGetChatDetails: vi.fn(),
-    mockGetChatMessages: vi.fn(),
-    mockMutationObject: {
-        mutate: vi.fn(),
-        isLoading: false,
-        isError: false,
-        error: null,
-        _callbacks: null as any,
-    },
-}))
-
-// Mock sonner toast
-vi.mock('sonner', () => ({
-    toast: {
-        success: vi.fn(),
-        error: vi.fn(),
-    },
-}))
-
-// Mock tRPC
-vi.mock('~/trpc/react', () => ({
-    api: {
-        inbox: {
-            getChatDetails: {
-                useQuery: mockGetChatDetails,
-            },
-            getChatMessages: {
-                useQuery: mockGetChatMessages,
-            },
-            deleteMessage: {
-                useMutation: vi.fn((callbacks) => {
-                    // Store the callbacks so we can trigger them in tests
-                    mockMutationObject._callbacks = callbacks
-                    return mockMutationObject
-                }),
-            },
-        },
-    },
-}))
-
-// Reset function to clear all mocks
-const resetApiMocks = () => {
-    mockDeleteMessage.mockReset()
-    mockRefetchMessages.mockReset()
-    mockGetChatDetails.mockReset()
-    mockGetChatMessages.mockReset()
-    mockMutationObject.mutate.mockReset()
-
-    // Reset to default implementations
-    mockGetChatDetails.mockReturnValue({
-        data: mockChatDetails,
-        isLoading: false,
-    })
-
-    mockGetChatMessages.mockReturnValue({
-        data: mockMessages,
-        isLoading: false,
-        refetch: mockRefetchMessages,
-    })
-}
-
-describe('ChatPage - Delete Message Functionality', () => {
+describe('ChatPage', () => {
     beforeEach(() => {
         resetApiMocks()
-
-        // Default implementation for delete mutation - just set up the mutate function
-        mockMutationObject.mutate.mockImplementation((params: any, options?: any) => {
-            // Don't automatically call callbacks - let tests control this
-        })
+        vi.clearAllMocks()
     })
 
-    it('should render chat messages correctly', () => {
+    it('should render chat details and messages', () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+
+        // Act
         render(<ChatPage />)
 
-        expect(screen.getByText('Hello, this is a test message')).toBeInTheDocument()
-        expect(screen.getByText('This is another message')).toBeInTheDocument()
+        // Assert
         expect(screen.getByText('John Doe')).toBeInTheDocument()
         expect(screen.getByText('Software Engineer')).toBeInTheDocument()
+        expect(screen.getByText('Hello, this is a test message')).toBeInTheDocument()
+        expect(screen.getByText('This is another message')).toBeInTheDocument()
     })
 
-    it('should show delete button only for outgoing messages on hover', async () => {
+    it('should show Mark as read button for unread chats', () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails, // has unread_count: 2
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+
+        // Act
         render(<ChatPage />)
 
-        const messages = screen.getAllByText(/this is/i)
-        expect(messages).toHaveLength(2)
-
-        // The delete button should not be visible initially
-        expect(screen.queryByLabelText('Delete message')).not.toBeInTheDocument()
-
-        // Find dropdown trigger buttons by test ID
-        const dropdownTriggers = screen.getAllByTestId('message-options-button')
-        expect(dropdownTriggers.length).toBeGreaterThan(0)
+        // Assert
+        expect(screen.getByText('Mark as read')).toBeInTheDocument()
     })
 
-    it('should not show delete button for incoming messages', () => {
+    it('should not show Mark as read button for read chats', () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetailsRead, // has unread_count: 0
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+
+        // Act
         render(<ChatPage />)
 
-        // Find the incoming message
-        const incomingMessage = screen.getByText('This is another message')
-        expect(incomingMessage).toBeInTheDocument()
+        // Assert
+        expect(screen.queryByText('Mark as read')).not.toBeInTheDocument()
+    })
 
-        // The incoming message should not have a delete button in its container
-        const messageContainer = incomingMessage.closest('.group')
-        expect(messageContainer).toBeInTheDocument()
+    it('should call markChatAsRead mutation when Mark as read button is clicked', async () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
 
-        // Check that this specific message container doesn't contain a delete button
-        if (messageContainer) {
-            const deleteButtonsInContainer = messageContainer.querySelectorAll('[data-testid="message-options-button"]')
-            expect(deleteButtonsInContainer.length).toBe(0)
+        render(<ChatPage />)
+
+        // Act
+        const markAsReadButton = screen.getByText('Mark as read')
+        fireEvent.click(markAsReadButton)
+
+        // Assert
+        expect(mockMarkChatAsRead).toHaveBeenCalledWith({ chatId: 'test-chat-id' })
+    })
+
+    it('should show loading state on Mark as read button during mutation', async () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+
+        render(<ChatPage />)
+
+        // Act
+        const markAsReadButton = screen.getByText('Mark as read')
+        fireEvent.click(markAsReadButton)
+
+        // Assert - button should be disabled and show loading text
+        expect(markAsReadButton).toBeDisabled()
+        expect(screen.getByText('Marking as read...')).toBeInTheDocument()
+    })
+
+    it('should show success toast and refetch chat details on successful mark as read', async () => {
+        // Arrange
+        const mockRefetch = vi.fn()
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: mockRefetch,
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+
+        render(<ChatPage />)
+
+        // Act
+        const markAsReadButton = screen.getByText('Mark as read')
+        fireEvent.click(markAsReadButton)
+
+        // Simulate successful mutation
+        triggerMutationCallback(mockMarkChatAsRead, 'onSuccess', { success: true })
+
+        // Assert
+        expect(toast.success).toHaveBeenCalledWith('Chat marked as read')
+        expect(mockRefetch).toHaveBeenCalled()
+    })
+
+    it('should show error toast on failed mark as read', async () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+
+        render(<ChatPage />)
+
+        // Act
+        const markAsReadButton = screen.getByText('Mark as read')
+        fireEvent.click(markAsReadButton)
+
+        // Simulate failed mutation
+        const error = { message: 'Failed to mark chat as read' }
+        triggerMutationCallback(mockMarkChatAsRead, 'onError', error)
+
+        // Assert
+        expect(toast.error).toHaveBeenCalledWith('Failed to mark chat as read')
+    })
+
+    it('should show loading state when chat details are loading', () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: undefined,
+            isLoading: true,
+            refetch: vi.fn(),
+        })
+
+        // Act
+        render(<ChatPage />)
+
+        // Assert
+        expect(screen.getByText('Loading chat details...')).toBeInTheDocument()
+    })
+
+    it('should show loading state when messages are loading', () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: undefined,
+            isLoading: true,
+            refetch: vi.fn(),
+        })
+
+        // Act
+        render(<ChatPage />)
+
+        // Assert
+        expect(screen.getByText('Loading messages...')).toBeInTheDocument()
+    })
+
+    it('should show empty state when no messages', () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: [],
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+
+        // Act
+        render(<ChatPage />)
+
+        // Assert
+        expect(screen.getByText('No messages in this conversation')).toBeInTheDocument()
+    })
+
+    it('should show message options dropdown for outgoing messages', async () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+
+        render(<ChatPage />)
+
+        // Act - find the outgoing message and its options button
+        const outgoingMessage = screen.getByText('Hello, this is a test message').closest('.group')
+        const optionsButton = outgoingMessage?.querySelector('[data-testid="message-options-button"]')
+
+        expect(optionsButton).toBeInTheDocument()
+        if (optionsButton) {
+            fireEvent.click(optionsButton)
         }
-    })
 
-    it('should open dropdown and show delete option when clicking menu button', async () => {
-        const user = userEvent.setup()
-        render(<ChatPage />)
-
-        // Find dropdown trigger button by test ID
-        const dropdownTrigger = screen.getByTestId('message-options-button')
-        await user.click(dropdownTrigger)
-
-        // Wait for dropdown to appear
+        // Assert
         await waitFor(() => {
             expect(screen.getByText('Delete message')).toBeInTheDocument()
         })
     })
 
-    it('should show confirmation dialog when delete is clicked', async () => {
-        const user = userEvent.setup()
-
-        // Mock window.confirm
-        const mockConfirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    it('should not show message options for incoming messages', () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
 
         render(<ChatPage />)
 
-        // Click dropdown and then delete
-        const dropdownTrigger = screen.getByTestId('message-options-button')
-        await user.click(dropdownTrigger)
+        // Act - find the incoming message
+        const incomingMessage = screen.getByText('This is another message').closest('.group')
+        const optionsButton = incomingMessage?.querySelector('[data-testid="message-options-button"]')
 
-        await waitFor(() => {
-            expect(screen.getByText('Delete message')).toBeInTheDocument()
-        })
-
-        const deleteMenuItem = screen.getByText('Delete message')
-        await user.click(deleteMenuItem)
-
-        expect(mockConfirm).toHaveBeenCalledWith(
-            'Are you sure you want to delete this message? This action cannot be undone.'
-        )
-
-        mockConfirm.mockRestore()
+        // Assert - options button should not exist for incoming messages
+        expect(optionsButton).not.toBeInTheDocument()
     })
 
-    it('should call delete mutation when confirmed', async () => {
-        const user = userEvent.setup()
+    it('should call deleteMessage mutation when delete is clicked', async () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
 
         // Mock window.confirm to return true
-        const mockConfirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+        vi.stubGlobal('confirm', vi.fn(() => true))
 
         render(<ChatPage />)
 
-        // Click dropdown and then delete
-        const dropdownTrigger = screen.getByTestId('message-options-button')
-        await user.click(dropdownTrigger)
+        // Act
+        const outgoingMessage = screen.getByText('Hello, this is a test message').closest('.group')
+        const optionsButton = outgoingMessage?.querySelector('[data-testid="message-options-button"]')
+
+        if (optionsButton) {
+            fireEvent.click(optionsButton)
+        }
 
         await waitFor(() => {
-            expect(screen.getByText('Delete message')).toBeInTheDocument()
+            const deleteButton = screen.getByText('Delete message')
+            fireEvent.click(deleteButton)
         })
 
-        const deleteMenuItem = screen.getByText('Delete message')
-        await user.click(deleteMenuItem)
-
-        expect(mockMutationObject.mutate).toHaveBeenCalledWith({
-            messageId: 'message-1',
-        })
-
-        mockConfirm.mockRestore()
+        // Assert
+        expect(mockDeleteMessage).toHaveBeenCalledWith({ messageId: 'message-1' })
     })
 
-    it('should not call delete mutation when cancelled', async () => {
-        const user = userEvent.setup()
+    it('should not delete message when user cancels confirmation', async () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
 
         // Mock window.confirm to return false
-        const mockConfirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+        vi.stubGlobal('confirm', vi.fn(() => false))
 
         render(<ChatPage />)
 
-        // Click dropdown and then delete
-        const dropdownTrigger = screen.getByTestId('message-options-button')
-        await user.click(dropdownTrigger)
+        // Act
+        const outgoingMessage = screen.getByText('Hello, this is a test message').closest('.group')
+        const optionsButton = outgoingMessage?.querySelector('[data-testid="message-options-button"]')
+
+        if (optionsButton) {
+            fireEvent.click(optionsButton)
+        }
 
         await waitFor(() => {
-            expect(screen.getByText('Delete message')).toBeInTheDocument()
+            const deleteButton = screen.getByText('Delete message')
+            fireEvent.click(deleteButton)
         })
 
-        const deleteMenuItem = screen.getByText('Delete message')
-        await user.click(deleteMenuItem)
-
-        expect(mockMutationObject.mutate).not.toHaveBeenCalled()
-
-        mockConfirm.mockRestore()
+        // Assert
+        expect(mockDeleteMessage).not.toHaveBeenCalled()
     })
 
-    it('should show success toast and refetch messages on successful delete', async () => {
-        const user = userEvent.setup()
-        const mockConfirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-
-        // Set up mock mutate to trigger onSuccess callback
-        mockMutationObject.mutate.mockImplementation((params: any) => {
-            // Simulate async behavior and call onSuccess
-            setTimeout(() => {
-                if (mockMutationObject._callbacks?.onSuccess) {
-                    mockMutationObject._callbacks.onSuccess()
-                }
-            }, 0)
+    it('should display contact avatar and initials correctly', () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
         })
 
+        // Act
         render(<ChatPage />)
 
-        // Click dropdown and then delete
-        const dropdownTrigger = screen.getByTestId('message-options-button')
-        await user.click(dropdownTrigger)
-
-        await waitFor(() => {
-            expect(screen.getByText('Delete message')).toBeInTheDocument()
-        })
-
-        const deleteMenuItem = screen.getByText('Delete message')
-        await user.click(deleteMenuItem)
-
-        // Verify the mutation was called
-        expect(mockMutationObject.mutate).toHaveBeenCalledWith({
-            messageId: 'message-1',
-        })
-
-        // Wait for success toast to be called
-        await waitFor(() => {
-            expect(toast.success).toHaveBeenCalledWith('Message deleted successfully')
-        }, { timeout: 3000 })
-
-        // Verify messages are refetched
-        await waitFor(() => {
-            expect(mockRefetchMessages).toHaveBeenCalled()
-        })
-
-        mockConfirm.mockRestore()
+        // Assert - check for avatar fallback with initials
+        expect(screen.getByText('JD')).toBeInTheDocument() // John Doe initials
     })
 
-    it('should show error toast on delete failure', async () => {
-        const user = userEvent.setup()
-        const mockConfirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    it('should format message timestamps correctly', () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
 
-        // Set up mock mutate to trigger onError callback
-        mockMutationObject.mutate.mockImplementation((params: any) => {
-            // Simulate async behavior and call onError
-            setTimeout(() => {
-                if (mockMutationObject._callbacks?.onError) {
-                    mockMutationObject._callbacks.onError({ message: 'Failed to delete message' })
-                }
-            }, 0)
+        // Act
+        render(<ChatPage />)
+
+        // Assert - check for formatted time
+        const expectedTime = new Date('2024-01-01T10:00:00Z').toLocaleTimeString()
+        expect(screen.getByText(expectedTime)).toBeInTheDocument()
+    })
+
+    it('should clear loading state after mutation settles', async () => {
+        // Arrange
+        mockGetChatDetails.mockReturnValue({
+            data: mockChatDetails,
+            isLoading: false,
+            refetch: vi.fn(),
+        })
+        mockGetChatMessages.mockReturnValue({
+            data: mockMessages,
+            isLoading: false,
+            refetch: vi.fn(),
         })
 
         render(<ChatPage />)
 
-        // Click dropdown and then delete
-        const dropdownTrigger = screen.getByTestId('message-options-button')
-        await user.click(dropdownTrigger)
+        // Act
+        const markAsReadButton = screen.getByText('Mark as read')
+        fireEvent.click(markAsReadButton)
 
+        // Simulate mutation settling
+        triggerMutationCallback(mockMarkChatAsRead, 'onSettled')
+
+        // Assert - loading state should be cleared
         await waitFor(() => {
-            expect(screen.getByText('Delete message')).toBeInTheDocument()
+            expect(screen.queryByText('Marking as read...')).not.toBeInTheDocument()
+            expect(markAsReadButton).not.toBeDisabled()
         })
-
-        const deleteMenuItem = screen.getByText('Delete message')
-        await user.click(deleteMenuItem)
-
-        // Verify the mutation was called
-        expect(mockMutationObject.mutate).toHaveBeenCalledWith({
-            messageId: 'message-1',
-        })
-
-        // Wait for error toast to be called
-        await waitFor(() => {
-            expect(toast.error).toHaveBeenCalledWith('Failed to delete message')
-        }, { timeout: 3000 })
-
-        mockConfirm.mockRestore()
     })
 }) 

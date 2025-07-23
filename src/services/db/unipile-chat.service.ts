@@ -505,4 +505,33 @@ export class UnipileChatService {
 			take: limit,
 		});
 	}
+
+	/**
+	 * Mark chat as read (set unread_count to 0)
+	 */
+	async markChatAsRead(chatId: string): Promise<UnipileChat> {
+		return await this.db.unipileChat.update({
+			where: { id: chatId },
+			data: {
+				unread_count: 0,
+				updated_at: new Date(),
+			},
+		});
+	}
+
+	/**
+	 * Update chat unread count
+	 */
+	async updateUnreadCount(
+		chatId: string,
+		unreadCount: number,
+	): Promise<UnipileChat> {
+		return await this.db.unipileChat.update({
+			where: { id: chatId },
+			data: {
+				unread_count: unreadCount,
+				updated_at: new Date(),
+			},
+		});
+	}
 }
