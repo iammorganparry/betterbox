@@ -191,7 +191,7 @@ describe('UnipileService - patchChat', () => {
 
       // Assert
       expect(mockClient.patch).toHaveBeenCalledWith(
-        `/chats/${chatId}?account_id=test%20account%20with%20spaces`,
+        `/chats/${chatId}?account_id=test+account+with+spaces`,
         request
       )
     })

@@ -66,4 +66,14 @@ export const mockNextRouter = (overrides: Partial<any> = {}) => {
   }))
 
   return mockRouter
+}
+
+// Mock dropdown menu components
+export const mockDropdownMenuModule = () => {
+  vi.mock('~/components/ui/dropdown-menu', () => ({
+    DropdownMenu: ({ children }: { children: React.ReactNode }) => React.createElement('div', { 'data-testid': 'dropdown-menu' }, children),
+    DropdownMenuTrigger: ({ children, ...props }: any) => React.createElement('button', props, children),
+    DropdownMenuContent: ({ children }: { children: React.ReactNode }) => React.createElement('div', { 'data-testid': 'dropdown-menu-content' }, children),
+    DropdownMenuItem: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => React.createElement('div', { onClick, role: 'menuitem' }, children),
+  }))
 } 
