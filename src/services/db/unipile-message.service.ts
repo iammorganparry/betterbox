@@ -393,13 +393,39 @@ export class UnipileMessageService {
 	 * Mark message as deleted (soft delete)
 	 */
 	async markMessageAsDeleted(messageId: string): Promise<UnipileMessage> {
-		return await this.db.unipileMessage.update({
+		// First, get the message to know which chat to update
+		const message = await this.db.unipileMessage.findUnique({
+			where: { id: messageId },
+			select: { chat_id: true },
+		});
+
+		if (!message?.chat_id) {
+			throw new Error(`Message not found: ${messageId}`);
+		}
+
+		// Mark the message as deleted
+		const deletedMessage = await this.db.unipileMessage.update({
 			where: { id: messageId },
 			data: {
 				is_deleted: true,
 				updated_at: new Date(),
 			},
 		});
+
+		// Recalculate chat statistics after deletion
+		const stats = await this.getChatMessageStats(message.chat_id);
+
+		// Update the chat's cached statistics
+		await this.db.unipileChat.update({
+			where: { id: message.chat_id },
+			data: {
+				unread_count: stats.unreadMessages,
+				last_message_at: stats.lastMessageAt,
+				updated_at: new Date(),
+			},
+		});
+
+		return deletedMessage;
 	}
 
 	/**

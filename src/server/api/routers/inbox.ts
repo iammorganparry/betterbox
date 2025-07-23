@@ -132,6 +132,55 @@ export const inboxRouter = createTRPCRouter({
 		}),
 
 	/**
+	 * Delete message (soft delete)
+	 */
+	deleteMessage: protectedProcedure
+		.input(
+			z.object({
+				messageId: z.string(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			try {
+				// First, verify the message exists and belongs to the user
+				const message = await ctx.services.unipileMessageService.getMessageWithDetails(
+					input.messageId
+				);
+
+				if (!message) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Message not found",
+					});
+				}
+
+				// Verify the message belongs to the current user
+				if (message.unipile_account.user_id !== ctx.userId) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "You can only delete your own messages",
+					});
+				}
+
+				// Perform soft delete
+				const result =
+					await ctx.services.unipileMessageService.markMessageAsDeleted(
+						input.messageId,
+					);
+
+				return result;
+			} catch (error) {
+				if (error instanceof TRPCError) {
+					throw error;
+				}
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to delete message",
+				});
+			}
+		}),
+
+	/**
 	 * Get chat details with attendees
 	 */
 	getChatDetails: protectedProcedure
