@@ -9,6 +9,7 @@ export const mockGetChatDetails = vi.fn()
 export const mockGetChatMessages = vi.fn()
 export const mockGetChats = vi.fn()
 export const mockMarkChatAsRead = vi.fn()
+export const mockSendMessage = vi.fn()
 
 // Mock data
 export const mockChatDetails = {
@@ -114,6 +115,12 @@ export const defaultMockImplementations = {
   markChatAsRead: () => ({
     mutate: mockMarkChatAsRead,
   }),
+  sendMessage: () => ({
+    mutate: mockSendMessage,
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
 }
 
 // Reset function to clear all mocks
@@ -126,6 +133,7 @@ export const resetApiMocks = () => {
   mockGetChatMessages.mockReset()
   mockGetChats.mockReset()
   mockMarkChatAsRead.mockReset()
+  mockSendMessage.mockReset()
   
   // Reset to default implementations
   mockGetChats.mockReturnValue(defaultMockImplementations.getChats())

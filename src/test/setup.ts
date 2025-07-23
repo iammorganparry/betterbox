@@ -32,6 +32,9 @@ vi.mock('~/trpc/react', () => ({
       getChatMessages: {
         useQuery: vi.fn(),
       },
+      sendMessage: {
+        useMutation: vi.fn(),
+      },
       deleteMessage: {
         useMutation: vi.fn(),
       },

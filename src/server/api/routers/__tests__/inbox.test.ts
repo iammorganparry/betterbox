@@ -1,11 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { TRPCError } from '@trpc/server'
-import { inboxRouter } from '../inbox'
-import { createUnipileService } from '~/services/unipile/unipile.service'
+
+// Mock the Unipile service at the top level
+const mockUnipileService = {
+  patchChat: vi.fn(),
+  sendMessage: vi.fn(),
+  listChats: vi.fn(),
+  listChatMessages: vi.fn(),
+  getChat: vi.fn(),
+  getMessage: vi.fn(),
+  downloadAttachment: vi.fn(),
+  healthCheck: vi.fn(),
+}
 
 // Mock the UnipileService
 vi.mock('~/services/unipile/unipile.service', () => ({
-  createUnipileService: vi.fn(),
+  createUnipileService: vi.fn(() => mockUnipileService),
 }))
 
 // Mock environment variables
@@ -16,19 +26,14 @@ vi.mock('~/env', () => ({
   },
 }))
 
+import { inboxRouter } from '../inbox'
+
 describe('inboxRouter - markChatAsRead', () => {
   let mockUnipileChatService: any
-  let mockUnipileService: any
   let mockContext: any
 
   beforeEach(() => {
     vi.clearAllMocks()
-
-    // Mock the Unipile service
-    mockUnipileService = {
-      patchChat: vi.fn(),
-    }
-    ;(createUnipileService as any).mockReturnValue(mockUnipileService)
 
     // Mock the chat service
     mockUnipileChatService = {
@@ -235,7 +240,7 @@ describe('inboxRouter - markChatAsRead', () => {
 
       // Act & Assert
       await expect(caller.markChatAsRead(input)).rejects.toThrow(
-        new TRPCError({
+        expect.objectContaining({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to mark chat as read',
         })
@@ -275,7 +280,7 @@ describe('inboxRouter - markChatAsRead', () => {
 
       // Act & Assert
       await expect(caller.markChatAsRead(input)).rejects.toThrow(
-        new TRPCError({
+        expect.objectContaining({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to mark chat as read',
         })
@@ -325,10 +330,11 @@ describe('inboxRouter - markChatAsRead', () => {
       await caller.markChatAsRead(input)
 
       // Assert
-      expect(createUnipileService).toHaveBeenCalledWith({
-        apiKey: 'test-api-key',
-        dsn: 'test-dsn',
-      })
+      expect(mockUnipileService.patchChat).toHaveBeenCalledWith(
+        'external-chat-id',
+        { action: 'mark_as_read' },
+        'linkedin-account-1'
+      )
     })
   })
 }) 

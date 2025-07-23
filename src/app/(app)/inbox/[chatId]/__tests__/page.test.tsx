@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import ChatPage from '../page'
 import { api } from '~/trpc/react'
 import { toast } from 'sonner'
@@ -9,26 +9,55 @@ import {
     mockGetChatMessages,
     mockMarkChatAsRead,
     mockDeleteMessage,
+    mockSendMessage,
     mockChatDetails,
     mockChatDetailsRead,
     mockMessages,
-    triggerMutationCallback,
 } from '~/test/mocks/api'
+import { mockDropdownMenuModule, mockSonnerModule } from '~/test/mocks/ui'
+
+// Setup shared mocks
+mockDropdownMenuModule()
+mockSonnerModule()
+
+// Store mutation options for testing callbacks
+let markChatAsReadOptions: any = null
+let deleteMessageOptions: any = null
 
 // Mock the API
 vi.mocked(api.inbox.getChatDetails.useQuery).mockImplementation(mockGetChatDetails)
 vi.mocked(api.inbox.getChatMessages.useQuery).mockImplementation(mockGetChatMessages)
-vi.mocked(api.inbox.markChatAsRead.useMutation).mockImplementation(() => ({
-    mutate: mockMarkChatAsRead,
-} as any))
-vi.mocked(api.inbox.deleteMessage.useMutation).mockImplementation(() => ({
-    mutate: mockDeleteMessage,
+vi.mocked(api.inbox.markChatAsRead.useMutation).mockImplementation((options) => {
+    markChatAsReadOptions = options
+    return {
+        mutate: mockMarkChatAsRead,
+        isPending: false,
+        isError: false,
+        error: null,
+    } as any
+})
+vi.mocked(api.inbox.deleteMessage.useMutation).mockImplementation((options) => {
+    deleteMessageOptions = options
+    return {
+        mutate: mockDeleteMessage,
+        isPending: false,
+        isError: false,
+        error: null,
+    } as any
+})
+vi.mocked(api.inbox.sendMessage.useMutation).mockImplementation(() => ({
+    mutate: mockSendMessage,
+    isPending: false,
+    isError: false,
+    error: null,
 } as any))
 
 describe('ChatPage', () => {
     beforeEach(() => {
         resetApiMocks()
         vi.clearAllMocks()
+        markChatAsReadOptions = null
+        deleteMessageOptions = null
     })
 
     it('should render chat details and messages', () => {
@@ -162,7 +191,7 @@ describe('ChatPage', () => {
         fireEvent.click(markAsReadButton)
 
         // Simulate successful mutation
-        triggerMutationCallback(mockMarkChatAsRead, 'onSuccess', { success: true })
+        markChatAsReadOptions.onSuccess({ success: true })
 
         // Assert
         expect(toast.success).toHaveBeenCalledWith('Chat marked as read')
@@ -190,7 +219,7 @@ describe('ChatPage', () => {
 
         // Simulate failed mutation
         const error = { message: 'Failed to mark chat as read' }
-        triggerMutationCallback(mockMarkChatAsRead, 'onError', error)
+        markChatAsReadOptions.onError(error)
 
         // Assert
         expect(toast.error).toHaveBeenCalledWith('Failed to mark chat as read')
@@ -275,8 +304,14 @@ describe('ChatPage', () => {
             fireEvent.click(optionsButton)
         }
 
-        // Assert
+        // Assert - Check for dropdown content by testid first, then text
         await waitFor(() => {
+            // The mocked dropdown should render the content immediately
+            const dropdownContent = screen.queryByTestId('dropdown-menu-content')
+            if (dropdownContent) {
+                expect(dropdownContent).toBeInTheDocument()
+            }
+            // The delete message text should be in a dropdown menu item
             expect(screen.getByText('Delete message')).toBeInTheDocument()
         })
     })
@@ -330,10 +365,9 @@ describe('ChatPage', () => {
             fireEvent.click(optionsButton)
         }
 
-        await waitFor(() => {
-            const deleteButton = screen.getByText('Delete message')
-            fireEvent.click(deleteButton)
-        })
+        // Wait for dropdown content and then click delete
+        const deleteButton = await screen.findByText('Delete message')
+        fireEvent.click(deleteButton)
 
         // Assert
         expect(mockDeleteMessage).toHaveBeenCalledWith({ messageId: 'message-1' })
@@ -365,10 +399,9 @@ describe('ChatPage', () => {
             fireEvent.click(optionsButton)
         }
 
-        await waitFor(() => {
-            const deleteButton = screen.getByText('Delete message')
-            fireEvent.click(deleteButton)
-        })
+        // Wait for dropdown content and then click delete
+        const deleteButton = await screen.findByText('Delete message')
+        fireEvent.click(deleteButton)
 
         // Assert
         expect(mockDeleteMessage).not.toHaveBeenCalled()
@@ -435,7 +468,9 @@ describe('ChatPage', () => {
         fireEvent.click(markAsReadButton)
 
         // Simulate mutation settling
-        triggerMutationCallback(mockMarkChatAsRead, 'onSettled')
+        await act(async () => {
+            markChatAsReadOptions.onSettled()
+        })
 
         // Assert - loading state should be cleared
         await waitFor(() => {

@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { MessageInput } from "~/components/message-input";
 
 interface ChatAttendee {
   id: string;
@@ -257,21 +258,16 @@ export default function ChatPage() {
       </div>
 
       {/* Message Input Area */}
-      <div className="border-t p-4">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Type a message..."
-            className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          <button
-            type="button"
-            className="rounded-md bg-blue-500 px-4 py-2 font-medium text-sm text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            Send
-          </button>
-        </div>
-      </div>
+      <MessageInput
+        chatId={chatId}
+        onMessageSent={() => void refetchMessages()}
+        disabled={chatLoading || !chatDetails}
+        placeholder={
+          chatDetails?.read_only === 1
+            ? "This conversation is read-only"
+            : "Type a message..."
+        }
+      />
     </div>
   );
 }
