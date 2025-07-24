@@ -84,17 +84,19 @@ model Post {
 }
 
 model User {
-  id             String           @id // Clerk user ID - no UUID generation needed
-  email          String           @unique
-  first_name     String?
-  last_name      String?
-  image_url      String?
-  is_deleted     Boolean          @default(false)
-  created_at     DateTime         @default(now())
-  updated_at     DateTime         @updatedAt
-  Message        Message[]
-  ProfileView    ProfileView[]
-  UnipileAccount UnipileAccount[]
+  id                 String           @id // Clerk user ID - no UUID generation needed
+  email              String           @unique
+  first_name         String?
+  last_name          String?
+  image_url          String?
+  stripe_customer_id String?          @unique // Stripe customer ID
+  is_deleted         Boolean          @default(false)
+  created_at         DateTime         @default(now())
+  updated_at         DateTime         @updatedAt
+  Message            Message[]
+  ProfileView        ProfileView[]
+  UnipileAccount     UnipileAccount[]
+  Subscription       Subscription?
 }
 
 // Represents a linkedin user profile
@@ -328,4 +330,68 @@ model UnipileProfileView {
 
   @@index([user_id])
   @@index([viewed_at])
+}
+
+// Subscription plans enum
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+  GOLD // Trial plan
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  UNPAID
+  TRIALING
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+}
+
+// Represents user subscriptions
+model Subscription {
+  id                     String             @id @default(uuid())
+  user                   User               @relation(fields: [user_id], references: [id])
+  user_id                String             @unique // One subscription per user
+  stripe_subscription_id String?            @unique // Stripe subscription ID
+  stripe_customer_id     String? // Stripe customer ID (denormalized for quick access)
+  plan                   SubscriptionPlan   @default(FREE)
+  status                 SubscriptionStatus @default(ACTIVE)
+  current_period_start   DateTime? // Current billing period start
+  current_period_end     DateTime? // Current billing period end
+  trial_start            DateTime? // Trial period start
+  trial_end              DateTime? // Trial period end
+  cancel_at_period_end   Boolean            @default(false) // Whether to cancel at period end
+  canceled_at            DateTime? // When the subscription was canceled
+  created_at             DateTime           @default(now())
+  updated_at             DateTime           @updatedAt
+  is_deleted             Boolean            @default(false)
+
+  PaymentMethod PaymentMethod[]
+
+  @@index([status])
+  @@index([trial_end])
+}
+
+// Represents user payment methods
+model PaymentMethod {
+  id                       String       @id @default(uuid())
+  subscription             Subscription @relation(fields: [subscription_id], references: [id])
+  subscription_id          String
+  stripe_payment_method_id String       @unique // Stripe payment method ID
+  type                     String // 'card', 'bank_account', etc.
+  card_brand               String? // 'visa', 'mastercard', etc.
+  card_last4               String? // Last 4 digits of card
+  card_exp_month           Int? // Card expiration month
+  card_exp_year            Int? // Card expiration year
+  is_default               Boolean      @default(false)
+  created_at               DateTime     @default(now())
+  updated_at               DateTime     @updatedAt
+  is_deleted               Boolean      @default(false)
+
+  @@index([subscription_id])
+  @@index([stripe_payment_method_id])
 }

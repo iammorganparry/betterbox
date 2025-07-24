@@ -25,6 +25,7 @@ export const inboxRouter = createTRPCRouter({
 						limit: input.limit,
 						include_attendees: true,
 						include_account: true,
+						include_messages: true,
 						order_by: "last_message_at",
 						order_direction: "desc",
 					},
@@ -145,9 +146,10 @@ export const inboxRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			try {
 				// First, verify the message exists and belongs to the user
-				const message = await ctx.services.unipileMessageService.getMessageWithDetails(
-					input.messageId
-				);
+				const message =
+					await ctx.services.unipileMessageService.getMessageWithDetails(
+						input.messageId,
+					);
 
 				if (!message) {
 					throw new TRPCError({
@@ -264,15 +266,14 @@ export const inboxRouter = createTRPCRouter({
 				}
 
 				// Update the database
-				const updatedChat = await ctx.services.unipileChatService.markChatAsRead(
-					input.chatId,
-				);
+				const updatedChat =
+					await ctx.services.unipileChatService.markChatAsRead(input.chatId);
 
-				return { 
-					success: true, 
+				return {
+					success: true,
 					message: "Chat marked as read",
 					chat: updatedChat,
-					unipileResponse 
+					unipileResponse,
 				};
 			} catch (error) {
 				if (error instanceof TRPCError) {
@@ -287,19 +288,78 @@ export const inboxRouter = createTRPCRouter({
 		}),
 
 	/**
+	 * Soft delete a chat
+	 */
+	softDeleteChat: protectedProcedure
+		.input(
+			z.object({
+				chatId: z.string(),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			try {
+				// First, get the chat details to verify ownership
+				const chat = await ctx.services.unipileChatService.getChatWithDetails(
+					input.chatId,
+				);
+
+				if (!chat) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Chat not found",
+					});
+				}
+
+				// Verify the chat belongs to the current user
+				if (chat.unipile_account.user_id !== ctx.userId) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "You can only delete your own chats",
+					});
+				}
+
+				// Perform soft delete
+				const deletedChat =
+					await ctx.services.unipileChatService.markChatAsDeleted(input.chatId);
+
+				return {
+					success: true,
+					message: "Chat deleted successfully",
+					chat: deletedChat,
+				};
+			} catch (error) {
+				if (error instanceof TRPCError) {
+					throw error;
+				}
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to delete chat",
+					cause: error,
+				});
+			}
+		}),
+
+	/**
 	 * Send a message to a chat
 	 */
 	sendMessage: protectedProcedure
 		.input(
 			z.object({
 				chatId: z.string(),
-				content: z.string().min(1, "Message content cannot be empty").max(2000, "Message content too long"),
-				attachments: z.array(z.object({
-					type: z.string(),
-					url: z.string().optional(),
-					filename: z.string().optional(),
-					data: z.string().optional(), // Base64 encoded
-				})).optional(),
+				content: z
+					.string()
+					.min(1, "Message content cannot be empty")
+					.max(2000, "Message content too long"),
+				attachments: z
+					.array(
+						z.object({
+							type: z.string(),
+							url: z.string().optional(),
+							filename: z.string().optional(),
+							data: z.string().optional(), // Base64 encoded
+						}),
+					)
+					.optional(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -327,7 +387,7 @@ export const inboxRouter = createTRPCRouter({
 				// Check if the chat is read-only
 				if (chat.read_only === 1) {
 					throw new TRPCError({
-						code: "FORBIDDEN", 
+						code: "FORBIDDEN",
 						message: "Cannot send messages to a read-only chat",
 					});
 				}
@@ -351,7 +411,9 @@ export const inboxRouter = createTRPCRouter({
 				if (sendMessageResponse.status === "failed") {
 					throw new TRPCError({
 						code: "BAD_GATEWAY",
-						message: sendMessageResponse.error || "Failed to send message through Unipile",
+						message:
+							sendMessageResponse.error ||
+							"Failed to send message through Unipile",
 					});
 				}
 
@@ -374,7 +436,9 @@ export const inboxRouter = createTRPCRouter({
 							content: messageData.text || input.content,
 							is_read: true,
 							is_outgoing: true, // This is an outgoing message
-							sent_at: messageData.timestamp ? new Date(messageData.timestamp) : new Date(),
+							sent_at: messageData.timestamp
+								? new Date(messageData.timestamp)
+								: new Date(),
 							sender_urn: messageData.sender_urn,
 							attendee_type: messageData.attendee_type,
 							attendee_distance: messageData.attendee_distance,

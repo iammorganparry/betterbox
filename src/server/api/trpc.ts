@@ -20,6 +20,8 @@ import { UnipileChatService } from "~/services/db/unipile-chat.service";
 import { RealtimeService } from "~/services/realtime.service";
 import { LinkedInAuthService } from "~/services/linkedin-auth.service";
 import { HistoricalSyncService } from "~/services/unipile/historical-sync";
+import { SubscriptionService } from "~/services/db/subscription.service";
+import { StripeService } from "~/services/stripe.service";
 
 /**
  * 1. CONTEXT
@@ -47,6 +49,8 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
 		realtimeService: new RealtimeService(),
 		linkedinAuthService: new LinkedInAuthService(),
 		historicalSyncService: new HistoricalSyncService(db),
+		subscriptionService: new SubscriptionService(db),
+		stripeService: new StripeService(),
 	};
 
 	return {
