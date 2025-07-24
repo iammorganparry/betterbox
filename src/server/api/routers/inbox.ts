@@ -482,4 +482,261 @@ export const inboxRouter = createTRPCRouter({
 				});
 			}
 		}),
+
+	/**
+	 * Get user's chat folders
+	 */
+	getFolders: protectedProcedure.query(async ({ ctx }) => {
+		try {
+			return await ctx.services.chatFolderService.getFoldersWithChatCounts(
+				ctx.userId
+			);
+		} catch (error) {
+			throw new TRPCError({
+				code: "INTERNAL_SERVER_ERROR",
+				message: "Failed to fetch folders",
+			});
+		}
+	}),
+
+	/**
+	 * Create a new chat folder
+	 */
+	createFolder: protectedProcedure
+		.input(
+			z.object({
+				name: z.string().min(1).max(50),
+				color: z.string().optional(),
+			})
+		)
+		.mutation(async ({ ctx, input }) => {
+			try {
+				return await ctx.services.chatFolderService.createFolder(
+					ctx.userId,
+					input
+				);
+			} catch (error) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to create folder",
+				});
+			}
+		}),
+
+	/**
+	 * Update a chat folder
+	 */
+	updateFolder: protectedProcedure
+		.input(
+			z.object({
+				folderId: z.string(),
+				name: z.string().min(1).max(50).optional(),
+				color: z.string().optional(),
+				sort_order: z.number().optional(),
+			})
+		)
+		.mutation(async ({ ctx, input }) => {
+			try {
+				const { folderId, ...updateData } = input;
+				return await ctx.services.chatFolderService.updateFolder(
+					folderId,
+					ctx.userId,
+					updateData
+				);
+			} catch (error) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to update folder",
+				});
+			}
+		}),
+
+	/**
+	 * Delete a chat folder
+	 */
+	deleteFolder: protectedProcedure
+		.input(
+			z.object({
+				folderId: z.string(),
+			})
+		)
+		.mutation(async ({ ctx, input }) => {
+			try {
+				return await ctx.services.chatFolderService.deleteFolder(
+					input.folderId,
+					ctx.userId
+				);
+			} catch (error) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to delete folder",
+				});
+			}
+		}),
+
+	/**
+	 * Assign a chat to a folder
+	 */
+	assignChatToFolder: protectedProcedure
+		.input(
+			z.object({
+				chatId: z.string(),
+				folderId: z.string(),
+			})
+		)
+		.mutation(async ({ ctx, input }) => {
+			try {
+				// Verify the chat belongs to the user
+				const chat = await ctx.services.unipileChatService.getChatWithDetails(
+					input.chatId
+				);
+
+				if (!chat) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Chat not found",
+					});
+				}
+
+				if (chat.unipile_account.user_id !== ctx.userId) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "You can only assign your own chats",
+					});
+				}
+
+				// Verify the folder belongs to the user
+				const folder = await ctx.services.chatFolderService.getFolderById(
+					input.folderId,
+					ctx.userId
+				);
+
+				if (!folder) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Folder not found",
+					});
+				}
+
+				return await ctx.services.chatFolderService.assignChatToFolder(
+					input.chatId,
+					input.folderId,
+					ctx.userId
+				);
+			} catch (error) {
+				if (error instanceof TRPCError) {
+					throw error;
+				}
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to assign chat to folder",
+				});
+			}
+		}),
+
+	/**
+	 * Remove a chat from a folder
+	 */
+	removeChatFromFolder: protectedProcedure
+		.input(
+			z.object({
+				chatId: z.string(),
+				folderId: z.string(),
+			})
+		)
+		.mutation(async ({ ctx, input }) => {
+			try {
+				return await ctx.services.chatFolderService.removeChatFromFolder(
+					input.chatId,
+					input.folderId
+				);
+			} catch (error) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to remove chat from folder",
+				});
+			}
+		}),
+
+	/**
+	 * Get chats in a specific folder
+	 */
+	getChatsInFolder: protectedProcedure
+		.input(
+			z.object({
+				folderId: z.string(),
+			})
+		)
+		.query(async ({ ctx, input }) => {
+			try {
+				// Verify the folder belongs to the user
+				const folder = await ctx.services.chatFolderService.getFolderById(
+					input.folderId,
+					ctx.userId
+				);
+
+				if (!folder) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Folder not found",
+					});
+				}
+
+				return await ctx.services.chatFolderService.getChatsInFolder(
+					input.folderId
+				);
+			} catch (error) {
+				if (error instanceof TRPCError) {
+					throw error;
+				}
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to fetch chats in folder",
+				});
+			}
+		}),
+
+	/**
+	 * Get folders that a chat is assigned to
+	 */
+	getChatFolders: protectedProcedure
+		.input(
+			z.object({
+				chatId: z.string(),
+			})
+		)
+		.query(async ({ ctx, input }) => {
+			try {
+				// Verify the chat belongs to the user
+				const chat = await ctx.services.unipileChatService.getChatWithDetails(
+					input.chatId
+				);
+
+				if (!chat) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Chat not found",
+					});
+				}
+
+				if (chat.unipile_account.user_id !== ctx.userId) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "You can only view your own chats",
+					});
+				}
+
+				return await ctx.services.chatFolderService.getChatFolders(
+					input.chatId
+				);
+			} catch (error) {
+				if (error instanceof TRPCError) {
+					throw error;
+				}
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to fetch chat folders",
+				});
+			}
+		}),
 });

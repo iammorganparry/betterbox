@@ -5,6 +5,7 @@ import { UnipileAccountService } from "~/services/db/unipile-account.service";
 import { UnipileChatService } from "~/services/db/unipile-chat.service";
 import { UnipileMessageService } from "~/services/db/unipile-message.service";
 import { UnipileContactService } from "~/services/db/unipile-contact.service";
+import { ChatFolderService } from "~/services/db/chat-folder.service";
 import { RealtimeService } from "~/services/realtime.service";
 import { InngestMiddleware } from "inngest";
 
@@ -18,6 +19,7 @@ export interface Services {
 	unipileChatService: UnipileChatService;
 	unipileMessageService: UnipileMessageService;
 	unipileContactService: UnipileContactService;
+	chatFolderService: ChatFolderService;
 	realtimeService: RealtimeService;
 }
 
@@ -32,6 +34,7 @@ function createServices(database: PrismaClient): Services {
 		unipileChatService: new UnipileChatService(database),
 		unipileMessageService: new UnipileMessageService(database),
 		unipileContactService: new UnipileContactService(database),
+		chatFolderService: new ChatFolderService(database),
 		realtimeService: new RealtimeService(),
 	};
 }
