@@ -26,6 +26,7 @@ import {
   useSidebar,
 } from "~/components/ui/sidebar";
 import { useUser } from "@clerk/nextjs";
+import Link from "next/link";
 
 export function NavUser() {
   const { user } = useUser();
@@ -88,9 +89,11 @@ export function NavUser() {
                 <BadgeCheck />
                 Account
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCard />
-                Billing
+              <DropdownMenuItem asChild>
+                <Link href="/pricing">
+                  <CreditCard />
+                  Billing
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <Bell />
