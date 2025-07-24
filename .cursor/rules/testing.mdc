@@ -1,0 +1,9 @@
+---
+alwaysApply: true
+---
+
+- When testing, only test backend functionality. 
+- Write unit tests with vitest
+- When writing integration tests, only mock thirdparty services
+
+- Do not test the frontend.

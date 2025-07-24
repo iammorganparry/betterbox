@@ -277,11 +277,10 @@ export default function OnboardingPage() {
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:items-center">
               {/* Free Plan */}
               <Card
-                className={`flex flex-col transition-all duration-200 ${
-                  selectedPlan === "free"
+                className={`flex flex-col transition-all duration-200 ${selectedPlan === "free"
                     ? "bg-primary/5 ring-2 ring-primary"
                     : "hover:shadow-md"
-                }`}
+                  }`}
               >
                 <CardHeader className="pb-2 text-center">
                   <CardTitle className="mb-7">Free</CardTitle>
@@ -332,11 +331,10 @@ export default function OnboardingPage() {
 
               {/* Starter Plan */}
               <Card
-                className={`flex flex-col transition-all duration-200 ${
-                  selectedPlan === "starter"
+                className={`flex flex-col transition-all duration-200 ${selectedPlan === "starter"
                     ? "border-primary bg-primary/5 ring-2 ring-primary"
                     : "border-primary hover:shadow-md"
-                }`}
+                  }`}
               >
                 <CardHeader className="pb-2 text-center">
                   <Badge className="mb-3 w-max self-center uppercase">
@@ -397,11 +395,10 @@ export default function OnboardingPage() {
 
               {/* Professional Plan */}
               <Card
-                className={`flex flex-col transition-all duration-200 ${
-                  selectedPlan === "professional"
+                className={`flex flex-col transition-all duration-200 ${selectedPlan === "professional"
                     ? "bg-primary/5 ring-2 ring-primary"
                     : "hover:shadow-md"
-                }`}
+                  }`}
               >
                 <CardHeader className="pb-2 text-center">
                   <CardTitle className="mb-7">Professional</CardTitle>
@@ -461,11 +458,10 @@ export default function OnboardingPage() {
 
               {/* Enterprise Plan */}
               <Card
-                className={`flex flex-col transition-all duration-200 ${
-                  selectedPlan === "enterprise"
+                className={`flex flex-col transition-all duration-200 ${selectedPlan === "enterprise"
                     ? "bg-primary/5 ring-2 ring-primary"
                     : "hover:shadow-md"
-                }`}
+                  }`}
               >
                 <CardHeader className="pb-2 text-center">
                   <CardTitle className="mb-7">Enterprise</CardTitle>
@@ -669,13 +665,12 @@ export default function OnboardingPage() {
             {steps.map((step, index) => (
               <React.Fragment key={step.id}>
                 <div
-                  className={`flex items-center gap-2 ${
-                    step.id === currentStep
+                  className={`flex items-center gap-2 ${step.id === currentStep
                       ? "text-primary"
                       : step.completed
-                      ? "text-green-600"
-                      : "text-muted-foreground"
-                  }`}
+                        ? "text-green-600"
+                        : "text-muted-foreground"
+                    }`}
                 >
                   {step.completed ? (
                     <CheckCircle

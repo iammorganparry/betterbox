@@ -23,6 +23,13 @@ import {
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { Input } from "~/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { sidebarConfig } from "./config/sidebar";
 import { api } from "~/trpc/react";
 import { formatDistanceToNow } from "date-fns";
@@ -70,9 +77,11 @@ interface GroupedChat {
   provider: string;
 }
 
+type FilterMode = "all" | "unread" | "read";
+
 export const InboxSidebar = () => {
   const [activeItem, setActiveItem] = useState(sidebarConfig[0]);
-  const [showUnreadsOnly, setShowUnreadsOnly] = useState(false);
+  const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [markingAsReadId, setMarkingAsReadId] = useState<string | null>(null);
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
   const router = useRouter();
@@ -143,22 +152,35 @@ export const InboxSidebar = () => {
     chatId: string,
     hasUnreadMessages: boolean
   ) => {
-    // Navigate to the chat
+    // Navigate to the chat first for immediate response
     router.push(`/inbox/${chatId}`);
 
-    // Automatically mark as read if it has unread messages
-    if (hasUnreadMessages && !markingAsReadId) {
+    // Always mark as read if it has unread messages (more robust approach)
+    if (hasUnreadMessages && markingAsReadId !== chatId) {
       setMarkingAsReadId(chatId);
-      markChatAsReadMutation.mutate({ chatId });
+      try {
+        await markChatAsReadMutation.mutateAsync({ chatId });
+      } catch (error) {
+        // Error handling is already in the mutation's onError
+        console.error("Failed to mark chat as read:", error);
+      }
     }
   };
 
   const typedChats = (chatsData as ChatData[]) || [];
 
-  // Filter chats based on unread toggle
-  const filteredChats = showUnreadsOnly
-    ? typedChats.filter((chat) => chat.unread_count > 0)
-    : typedChats;
+  // Filter chats based on selected filter mode
+  const filteredChats = typedChats.filter((chat) => {
+    switch (filterMode) {
+      case "unread":
+        return chat.unread_count > 0;
+      case "read":
+        return chat.unread_count === 0;
+      case "all":
+      default:
+        return true;
+    }
+  });
 
   // Filter out chats without proper contact information
   const chatsWithContacts = filteredChats.filter((chat) => {
@@ -183,7 +205,7 @@ export const InboxSidebar = () => {
     const latestMessage = chat.UnipileMessage?.[0];
     const messageTeaser = latestMessage?.content
       ? latestMessage.content.split(" ").slice(0, 8).join(" ") +
-        (latestMessage.content.split(" ").length > 8 ? "..." : "")
+      (latestMessage.content.split(" ").length > 8 ? "..." : "")
       : "No messages yet";
 
     return {
@@ -191,19 +213,19 @@ export const InboxSidebar = () => {
       name: contactName,
       date: chat.last_message_at
         ? formatDistanceToNow(new Date(chat.last_message_at), {
-            addSuffix: true,
-          })
+          addSuffix: true,
+        })
         : "",
       subject: contact?.headline || "",
       teaser: messageTeaser,
       avatar: contact?.profile_image_url || null,
       initials: contactName
         ? contactName
-            .split(" ")
-            .map((n: string) => n[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2)
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2)
         : "UC",
       provider: chat.provider,
     };
@@ -234,14 +256,21 @@ export const InboxSidebar = () => {
             <div className="font-medium text-base text-foreground">
               {activeItem?.title}
             </div>
-            <Label className="flex items-center gap-2 text-sm">
-              <span>Unreads</span>
-              <Switch
-                className="shadow-none"
-                checked={showUnreadsOnly}
-                onCheckedChange={setShowUnreadsOnly}
-              />
-            </Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="filter-select" className="text-sm">
+                Filter:
+              </Label>
+              <Select value={filterMode} onValueChange={(value: FilterMode) => setFilterMode(value)}>
+                <SelectTrigger id="filter-select" className="w-24 h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="unread">Unread</SelectItem>
+                  <SelectItem value="read">Read</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <Input placeholder="Type to search..." className="mt-3" />
         </div>
@@ -252,9 +281,11 @@ export const InboxSidebar = () => {
             </div>
           ) : mails.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground text-sm">
-              {showUnreadsOnly
+              {filterMode === "unread"
                 ? "No unread conversations"
-                : "No conversations found"}
+                : filterMode === "read"
+                  ? "No read conversations"
+                  : "No conversations found"}
             </div>
           ) : (
             <div className="space-y-4">
@@ -274,9 +305,8 @@ export const InboxSidebar = () => {
                       return (
                         <div
                           key={mail.email}
-                          className={`group flex w-full items-center border-b last:border-b-0 hover:bg-muted/50 ${
-                            selectedChatId === mail.email ? "bg-muted" : ""
-                          }`}
+                          className={`group flex w-full items-center border-b last:border-b-0 hover:bg-muted/50 ${selectedChatId === mail.email ? "bg-muted" : ""
+                            }`}
                         >
                           <button
                             type="button"

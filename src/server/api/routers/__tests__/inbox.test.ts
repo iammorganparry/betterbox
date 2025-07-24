@@ -28,6 +28,198 @@ vi.mock('~/env', () => ({
 
 import { inboxRouter } from '../inbox'
 
+describe('inboxRouter - getChats', () => {
+  let mockUnipileChatService: any
+  let mockContext: any
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    // Mock the chat service
+    mockUnipileChatService = {
+      getChatsByUser: vi.fn(),
+    }
+
+    // Mock the context
+    mockContext = {
+      userId: 'test-user-id',
+      services: {
+        unipileChatService: mockUnipileChatService,
+      },
+    }
+  })
+
+  describe('getChats query', () => {
+    it('should return chats for authenticated user with default parameters', async () => {
+      // Arrange
+      const expectedChats = [
+        {
+          id: 'chat1',
+          provider: 'linkedin',
+          unread_count: 2,
+          last_message_at: new Date('2024-01-15'),
+          UnipileChatAttendee: [
+            {
+              id: 'attendee1',
+              is_self: 0,
+              contact: {
+                id: 'contact1',
+                full_name: 'John Doe',
+                profile_image_url: 'https://example.com/image.jpg'
+              }
+            }
+          ],
+          UnipileMessage: [
+            {
+              id: 'msg1',
+              content: 'Hello there',
+              is_outgoing: false,
+              sent_at: new Date('2024-01-15')
+            }
+          ]
+        },
+        {
+          id: 'chat2',
+          provider: 'linkedin',
+          unread_count: 0,
+          last_message_at: new Date('2024-01-14'),
+          UnipileChatAttendee: [
+            {
+              id: 'attendee2',
+              is_self: 0,
+              contact: {
+                id: 'contact2',
+                full_name: 'Jane Smith',
+                profile_image_url: null
+              }
+            }
+          ],
+          UnipileMessage: [
+            {
+              id: 'msg2',
+              content: 'Thanks for connecting',
+              is_outgoing: true,
+              sent_at: new Date('2024-01-14')
+            }
+          ]
+        }
+      ]
+
+      mockUnipileChatService.getChatsByUser.mockResolvedValue(expectedChats)
+
+      const caller = inboxRouter.createCaller(mockContext)
+
+      // Act
+      const result = await caller.getChats({})
+
+      // Assert
+      expect(mockUnipileChatService.getChatsByUser).toHaveBeenCalledWith(
+        'test-user-id',
+        undefined, // no provider filter
+        {
+          limit: 50,
+          include_attendees: true,
+          include_account: true,
+          include_messages: true,
+          order_by: 'last_message_at',
+          order_direction: 'desc',
+        }
+      )
+      expect(result).toEqual(expectedChats)
+    })
+
+    it('should filter by provider when specified', async () => {
+      // Arrange
+      const expectedChats = [
+        {
+          id: 'chat1',
+          provider: 'linkedin',
+          unread_count: 1,
+        }
+      ]
+
+      mockUnipileChatService.getChatsByUser.mockResolvedValue(expectedChats)
+
+      const caller = inboxRouter.createCaller(mockContext)
+
+      // Act
+      const result = await caller.getChats({ provider: 'linkedin' })
+
+      // Assert
+      expect(mockUnipileChatService.getChatsByUser).toHaveBeenCalledWith(
+        'test-user-id',
+        'linkedin',
+        expect.objectContaining({
+          limit: 50,
+        })
+      )
+      expect(result).toEqual(expectedChats)
+    })
+
+    it('should respect custom limit parameter', async () => {
+      // Arrange
+      mockUnipileChatService.getChatsByUser.mockResolvedValue([])
+
+      const caller = inboxRouter.createCaller(mockContext)
+
+      // Act
+      await caller.getChats({ limit: 25 })
+
+      // Assert
+      expect(mockUnipileChatService.getChatsByUser).toHaveBeenCalledWith(
+        'test-user-id',
+        undefined,
+        expect.objectContaining({
+          limit: 25,
+        })
+      )
+    })
+
+    it('should throw INTERNAL_SERVER_ERROR when database operation fails', async () => {
+      // Arrange
+      mockUnipileChatService.getChatsByUser.mockRejectedValue(new Error('Database error'))
+
+      const caller = inboxRouter.createCaller(mockContext)
+
+      // Act & Assert
+      await expect(caller.getChats({})).rejects.toThrow('Failed to fetch chats')
+    })
+
+    it('should validate limit parameter bounds', async () => {
+      // Arrange
+      const caller = inboxRouter.createCaller(mockContext)
+
+      // Act & Assert - Test minimum bound
+      await expect(caller.getChats({ limit: 0 })).rejects.toThrow()
+
+      // Test maximum bound
+      await expect(caller.getChats({ limit: 101 })).rejects.toThrow()
+    })
+
+    it('should handle chats with various unread counts for filtering tests', async () => {
+      // Arrange
+      const mixedChats = [
+        { id: 'chat1', unread_count: 5, provider: 'linkedin' },  // unread
+        { id: 'chat2', unread_count: 0, provider: 'linkedin' },  // read
+        { id: 'chat3', unread_count: 1, provider: 'email' },     // unread
+        { id: 'chat4', unread_count: 0, provider: 'email' },     // read
+      ]
+
+      mockUnipileChatService.getChatsByUser.mockResolvedValue(mixedChats)
+
+      const caller = inboxRouter.createCaller(mockContext)
+
+      // Act
+      const result = await caller.getChats({})
+
+      // Assert
+      expect(result).toHaveLength(4)
+      expect(result.filter(chat => chat.unread_count > 0)).toHaveLength(2) // 2 unread
+      expect(result.filter(chat => chat.unread_count === 0)).toHaveLength(2) // 2 read
+    })
+  })
+})
+
 describe('inboxRouter - markChatAsRead', () => {
   let mockUnipileChatService: any
   let mockContext: any
@@ -180,6 +372,81 @@ describe('inboxRouter - markChatAsRead', () => {
       })
       expect(mockUnipileService.patchChat).not.toHaveBeenCalled()
       expect(mockUnipileChatService.markChatAsRead).not.toHaveBeenCalled()
+    })
+
+    it('should handle concurrent mark-as-read requests gracefully', async () => {
+      // Arrange
+      const input = { chatId: 'test-chat-id' }
+      const mockChatDetails = {
+        id: 'test-chat-id',
+        external_id: 'external-chat-id',
+        unread_count: 3,
+        unipile_account: {
+          id: 'account-1',
+          user_id: 'test-user-id',
+          account_id: 'linkedin-account-1',
+        },
+      }
+
+      mockUnipileChatService.getChatWithDetails.mockResolvedValue(mockChatDetails)
+      mockUnipileService.patchChat.mockResolvedValue({
+        success: true,
+        object: 'ChatAction',
+      })
+      mockUnipileChatService.markChatAsRead.mockResolvedValue({
+        ...mockChatDetails,
+        unread_count: 0,
+      })
+
+      const caller = inboxRouter.createCaller(mockContext)
+
+      // Act - Simulate concurrent requests
+      const promise1 = caller.markChatAsRead(input)
+      const promise2 = caller.markChatAsRead(input)
+
+      const [result1, result2] = await Promise.all([promise1, promise2])
+
+      // Assert - Both should succeed
+      expect(result1.success).toBe(true)
+      expect(result2.success).toBe(true)
+    })
+
+    it('should handle chats with high unread counts', async () => {
+      // Arrange
+      const input = { chatId: 'test-chat-id' }
+      const mockChatDetails = {
+        id: 'test-chat-id',
+        external_id: 'external-chat-id',
+        unread_count: 999, // High unread count
+        unipile_account: {
+          id: 'account-1',
+          user_id: 'test-user-id',
+          account_id: 'linkedin-account-1',
+        },
+      }
+
+      mockUnipileChatService.getChatWithDetails.mockResolvedValue(mockChatDetails)
+      mockUnipileService.patchChat.mockResolvedValue({
+        success: true,
+        object: 'ChatAction',
+      })
+      mockUnipileChatService.markChatAsRead.mockResolvedValue({
+        ...mockChatDetails,
+        unread_count: 0,
+      })
+
+      const caller = inboxRouter.createCaller(mockContext)
+
+      // Act
+      const result = await caller.markChatAsRead(input)
+
+      // Assert
+      expect(result.success).toBe(true)
+      expect(mockUnipileService.patchChat).toHaveBeenCalledWith(
+        'external-chat-id',
+        { action: 'mark_as_read' },
+        'linkedin-account-1'
+      )
     })
 
     it('should throw BAD_GATEWAY error when Unipile API fails', async () => {
