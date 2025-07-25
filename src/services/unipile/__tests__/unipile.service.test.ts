@@ -11,6 +11,9 @@ vi.mock("~/lib/http", () => ({
 		patch: vi.fn(),
 		get: vi.fn(),
 		post: vi.fn(),
+		defaults: {
+			baseURL: "https://mock-api.unipile.com",
+		},
 	})),
 }));
 

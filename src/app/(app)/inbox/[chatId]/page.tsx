@@ -14,6 +14,7 @@ import {
 } from "~/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { MessageInput } from "~/components/message-input";
+import { useRouter } from "next/navigation";
 
 interface ChatAttendee {
   id: string;
@@ -40,6 +41,7 @@ interface MessageData {
 
 export default function ChatPage() {
   const params = useParams();
+  const router = useRouter();
   const chatId = params?.chatId as string;
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(
     null
@@ -49,6 +51,7 @@ export default function ChatPage() {
   const {
     data: chatDetails,
     isLoading: chatLoading,
+    error: chatError,
     refetch: refetchChatDetails,
   } = api.inbox.getChatDetails.useQuery(
     { chatId: chatId || "" },
@@ -58,6 +61,7 @@ export default function ChatPage() {
   const {
     data: messages,
     isLoading: messagesLoading,
+    error: messagesError,
     refetch: refetchMessages,
   } = api.inbox.getChatMessages.useQuery(
     { chatId: chatId || "", limit: 50 },
@@ -98,6 +102,44 @@ export default function ChatPage() {
           <p className="text-sm">
             The requested conversation could not be found
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Check for contact limit restriction error
+  const isContactLimitError = chatError?.data?.code === "FORBIDDEN" &&
+    chatError?.message?.includes("beyond your current plan's limit");
+
+  if (isContactLimitError) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center">
+          <div className="mb-4">
+            <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-amber-100 flex items-center justify-center">
+              <span className="text-amber-600 text-2xl">✨</span>
+            </div>
+            <h3 className="font-medium text-lg text-amber-700 mb-2">Premium Contact</h3>
+            <p className="text-amber-600 text-sm max-w-md mx-auto">
+              This contact is beyond your current plan's limit. Upgrade your subscription to view this conversation and unlock access to all your contacts.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Button
+              onClick={() => router.push("/billing")}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              Upgrade Plan
+            </Button>
+            <br />
+            <Button
+              variant="outline"
+              onClick={() => router.push("/inbox")}
+              className="text-sm"
+            >
+              Back to Inbox
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -182,17 +224,15 @@ export default function ChatPage() {
             {messages.map((message: MessageData) => (
               <div
                 key={message.id}
-                className={`group flex ${
-                  message.is_outgoing ? "justify-end" : "justify-start"
-                }`}
+                className={`group flex ${message.is_outgoing ? "justify-end" : "justify-start"
+                  }`}
               >
                 <div className="flex max-w-[70%] items-start gap-2">
                   <div
-                    className={`relative rounded-lg px-4 py-2 ${
-                      message.is_outgoing
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-100 text-gray-900"
-                    }`}
+                    className={`relative rounded-lg px-4 py-2 ${message.is_outgoing
+                      ? "bg-blue-500 text-white"
+                      : "bg-gray-100 text-gray-900"
+                      }`}
                   >
                     <p className="text-sm">{message.content}</p>
                     <p className="mt-1 text-xs opacity-70">

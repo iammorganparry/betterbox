@@ -20,6 +20,16 @@ const mockUnipileChatService = {
 	getChatWithDetails: vi.fn(),
 };
 
+const mockContactLimitService = {
+	getContactLimitStatus: vi.fn().mockResolvedValue({
+		limit: 100,
+		count: 50,
+		isExceeded: false,
+		remainingContacts: 50,
+	}),
+	applyContactLimitsToChats: vi.fn().mockImplementation((userId, chats) => Promise.resolve(chats)),
+};
+
 // Create mock context
 const createMockContext = (userId: string | null = "user-123") => ({
 	db: {} as any,
@@ -28,6 +38,7 @@ const createMockContext = (userId: string | null = "user-123") => ({
 	services: {
 		chatFolderService: mockChatFolderService,
 		unipileChatService: mockUnipileChatService,
+		contactLimitService: mockContactLimitService,
 	},
 	headers: new Headers(),
 });

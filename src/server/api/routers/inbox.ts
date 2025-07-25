@@ -31,7 +31,13 @@ export const inboxRouter = createTRPCRouter({
 					},
 				);
 
-				return chats;
+				// Apply contact limits and obfuscation
+				const filteredChats = await ctx.services.contactLimitService.applyContactLimitsToChats(
+					ctx.userId,
+					chats
+				);
+
+				return filteredChats;
 			} catch (error) {
 				throw new TRPCError({
 					code: "INTERNAL_SERVER_ERROR",
@@ -53,6 +59,49 @@ export const inboxRouter = createTRPCRouter({
 		)
 		.query(async ({ ctx, input }) => {
 			try {
+				// First, verify the chat exists and belongs to the user
+				const chatDetails = await ctx.services.unipileChatService.getChatWithDetails(input.chatId);
+
+				if (!chatDetails) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Chat not found",
+					});
+				}
+
+				// Verify the chat belongs to the current user
+				if (chatDetails.unipile_account.user_id !== ctx.userId) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "You can only view your own chats",
+					});
+				}
+
+				// Check if this chat is obfuscated due to contact limits
+				const limitStatus = await ctx.services.contactLimitService.getContactLimitStatus(ctx.userId);
+				
+				if (limitStatus.isExceeded) {
+					// Apply contact limits to this single chat
+					const filteredChats = await ctx.services.contactLimitService.applyContactLimitsToChats(
+						ctx.userId,
+						[chatDetails]
+					);
+					
+					const filteredChat = filteredChats[0];
+					
+					// If the chat is obfuscated (contact name became "Premium Contact"), deny access
+					const isObfuscated = filteredChat?.UnipileChatAttendee?.some(
+						(attendee: any) => attendee.contact?.full_name === "Premium Contact"
+					);
+					
+					if (isObfuscated) {
+						throw new TRPCError({
+							code: "FORBIDDEN",
+							message: "This contact is beyond your current plan's limit. Upgrade to view messages from this contact.",
+						});
+					}
+				}
+
 				const messages =
 					await ctx.services.unipileMessageService.getMessagesByChat(
 						input.chatId,
@@ -68,6 +117,9 @@ export const inboxRouter = createTRPCRouter({
 
 				return messages;
 			} catch (error) {
+				if (error instanceof TRPCError) {
+					throw error;
+				}
 				throw new TRPCError({
 					code: "INTERNAL_SERVER_ERROR",
 					message: "Failed to fetch messages",
@@ -200,8 +252,51 @@ export const inboxRouter = createTRPCRouter({
 						input.chatId,
 					);
 
+				if (!chatDetails) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Chat not found",
+					});
+				}
+
+				// Verify the chat belongs to the current user
+				if (chatDetails.unipile_account.user_id !== ctx.userId) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "You can only view your own chats",
+					});
+				}
+
+				// Check if this chat is obfuscated due to contact limits
+				const limitStatus = await ctx.services.contactLimitService.getContactLimitStatus(ctx.userId);
+				
+				if (limitStatus.isExceeded) {
+					// Apply contact limits to this single chat
+					const filteredChats = await ctx.services.contactLimitService.applyContactLimitsToChats(
+						ctx.userId,
+						[chatDetails]
+					);
+					
+					const filteredChat = filteredChats[0];
+					
+					// If the chat is obfuscated (contact name became "Premium Contact"), deny access
+					const isObfuscated = filteredChat?.UnipileChatAttendee?.some(
+						(attendee: any) => attendee.contact?.full_name === "Premium Contact"
+					);
+					
+					if (isObfuscated) {
+						throw new TRPCError({
+							code: "FORBIDDEN",
+							message: "This contact is beyond your current plan's limit. Upgrade to view this conversation.",
+						});
+					}
+				}
+
 				return chatDetails;
 			} catch (error) {
+				if (error instanceof TRPCError) {
+					throw error;
+				}
 				throw new TRPCError({
 					code: "INTERNAL_SERVER_ERROR",
 					message: "Failed to fetch chat details",
@@ -263,6 +358,31 @@ export const inboxRouter = createTRPCRouter({
 					});
 				}
 
+				// Check if this chat is obfuscated due to contact limits
+				const limitStatus = await ctx.services.contactLimitService.getContactLimitStatus(ctx.userId);
+				
+				if (limitStatus.isExceeded) {
+					// Apply contact limits to this single chat
+					const filteredChats = await ctx.services.contactLimitService.applyContactLimitsToChats(
+						ctx.userId,
+						[chat]
+					);
+					
+					const filteredChat = filteredChats[0];
+					
+					// If the chat is obfuscated (contact name became "Premium Contact"), deny marking as read
+					const isObfuscated = filteredChat?.UnipileChatAttendee?.some(
+						(attendee: any) => attendee.contact?.full_name === "Premium Contact"
+					);
+					
+					if (isObfuscated) {
+						throw new TRPCError({
+							code: "FORBIDDEN",
+							message: "Cannot interact with premium contacts. Upgrade your plan to access this contact.",
+						});
+					}
+				}
+
 				// Skip if already read (unread_count is 0)
 				if (chat.unread_count === 0) {
 					console.log("ℹ️ Chat already marked as read");
@@ -309,6 +429,18 @@ export const inboxRouter = createTRPCRouter({
 					throw new TRPCError({
 						code: "BAD_GATEWAY",
 						message: `Unexpected response from Unipile: ${unipileResponse.object || "Unknown response"}`,
+					});
+				}
+
+				// Check if Unipile operation was successful
+				if (unipileResponse.success === false) {
+					console.error(
+						"❌ Unipile API operation failed:",
+						unipileResponse,
+					);
+					throw new TRPCError({
+						code: "BAD_GATEWAY",
+						message: unipileResponse.message || "Failed to mark chat as read in Unipile",
 					});
 				}
 
@@ -442,6 +574,31 @@ export const inboxRouter = createTRPCRouter({
 						code: "FORBIDDEN",
 						message: "You can only send messages to your own chats",
 					});
+				}
+
+				// Check if this chat is obfuscated due to contact limits
+				const limitStatus = await ctx.services.contactLimitService.getContactLimitStatus(ctx.userId);
+				
+				if (limitStatus.isExceeded) {
+					// Apply contact limits to this single chat
+					const filteredChats = await ctx.services.contactLimitService.applyContactLimitsToChats(
+						ctx.userId,
+						[chat]
+					);
+					
+					const filteredChat = filteredChats[0];
+					
+					// If the chat is obfuscated (contact name became "Premium Contact"), deny sending messages
+					const isObfuscated = filteredChat?.UnipileChatAttendee?.some(
+						(attendee: any) => attendee.contact?.full_name === "Premium Contact"
+					);
+					
+					if (isObfuscated) {
+						throw new TRPCError({
+							code: "FORBIDDEN",
+							message: "Cannot send messages to premium contacts. Upgrade your plan to message this contact.",
+						});
+					}
 				}
 
 				// Check if the chat is read-only

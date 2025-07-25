@@ -1,6 +1,7 @@
 import { postRouter } from "~/server/api/routers/post";
 import { linkedinRouter } from "~/server/api/routers/linkedin";
 import { inboxRouter } from "~/server/api/routers/inbox";
+import { subscriptionRouter } from "~/server/api/routers/subscription";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
 /**
@@ -12,6 +13,7 @@ export const appRouter = createTRPCRouter({
 	post: postRouter,
 	linkedin: linkedinRouter,
 	inbox: inboxRouter,
+	subscription: subscriptionRouter,
 });
 
 // export type definition of API

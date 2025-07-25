@@ -1,89 +1,161 @@
-# Active Context - Mark as Read Feature Implementation
+# Active Context - Contact Limits Feature Implementation
 
 ## Current Work Focus
 
-We have successfully implemented a comprehensive "mark as read" feature for the LinkedIn messaging application. This feature allows users to mark conversations as read from both the sidebar and within the chat interface.
+We have successfully implemented subscription-based contact limits for the LinkedIn messaging application. This feature restricts access to contacts based on subscription tiers and obfuscates chats when limits are exceeded.
 
 ## Recent Changes (Just Completed)
 
-### 1. **Unipile API Integration**
-- **File**: `src/types/unipile-api.ts`
-- **Changes**: Added `UnipileApiPatchChatRequest` and `UnipileApiPatchChatResponse` types
-- **Purpose**: Support for PATCH `/chats/{chat_id}` endpoint to mark chats as read
+### 1. **Contact Limits Configuration**
+- **File**: `src/config/contact-limits.config.ts`
+- **Changes**: Created centralized configuration for subscription-based contact limits
+- **Purpose**: Define limits for each subscription tier without magic numbers
+- **Limits**: FREE (100), STARTER (1000), PROFESSIONAL/ENTERPRISE/GOLD (10000)
+- **Features**: Helper functions for getting limits and plan descriptions
 
-### 2. **UnipileService Enhancement**
-- **File**: `src/services/unipile/unipile.service.ts`
-- **Changes**: Added `patchChat()` method
-- **Purpose**: Handles communication with Unipile's PATCH chat endpoint
-- **Features**: Supports marking chats as read, muting, archiving, etc.
-
-### 3. **Database Service Updates**
-- **File**: `src/services/db/unipile-chat.service.ts`
-- **Changes**: Added `markChatAsRead()` and `updateUnreadCount()` methods
-- **Purpose**: Local database updates for read status management
-
-### 4. **TRPC API Endpoint**
-- **File**: `src/server/api/routers/inbox.ts`
-- **Changes**: Added `markChatAsRead` mutation
-- **Purpose**: Full-stack endpoint that updates both Unipile and local database
-- **Security**: Validates user ownership of chats
-
-### 5. **Sidebar Context Menu**
-- **File**: `src/components/inbox-sidebar.tsx`
-- **Changes**: Added dropdown context menu with "Mark as read" option
-- **Features**: 
-  - Shows unread indicator dots
-  - Context menu appears on hover
-  - Only shows "Mark as read" for unread chats
-  - Toast notifications for success/error
-  - Automatic UI refresh after marking as read
-
-### 6. **Chat Page Integration**
-- **File**: `src/app/(app)/inbox/[chatId]/page.tsx`
-- **Changes**: Added "Mark as read" button in chat header
+### 2. **Contact Limit Service**
+- **File**: `src/services/db/contact-limit.service.ts`
+- **Changes**: Created comprehensive service for contact limit management
+- **Purpose**: Count contacts, check limits, and apply obfuscation
 - **Features**:
-  - Only visible for chats with unread messages
-  - Disabled state during processing
-  - Integrated with same TRPC mutation
+  - Counts contacts from incoming messages and profile views
+  - Complex SQL queries to get unique contact counts
+  - Obfuscation logic for chats exceeding limits
+  - Contact limit status with remaining count
+
+### 3. **Services Middleware Updates**
+- **File**: `src/middleware/services.middleware.ts`
+- **Changes**: Added ContactLimitService to service injection
+- **Purpose**: Make contact limit service available in Inngest functions
+
+### 4. **TRPC Context Integration**
+- **File**: `src/server/api/trpc.ts`
+- **Changes**: Added ContactLimitService to TRPC context
+- **Purpose**: Make contact limit service available in all TRPC procedures
+
+### 5. **Inbox Router Enhancement**
+- **File**: `src/server/api/routers/inbox.ts`
+- **Changes**: Applied contact limits to `getChats` endpoint
+- **Purpose**: Filter and obfuscate chats based on user's subscription limits
+- **Features**: Automatic application of contact limits to chat responses
+
+### 6. **Subscription Router Extension**
+- **File**: `src/server/api/routers/subscription.ts`
+- **Changes**: Added `getContactLimitStatus` and `getPlanLimits` endpoints
+- **Purpose**: Expose contact limit information to frontend
+- **Features**: Real-time limit status and public plan limits for pricing pages
+
+### 7. **Comprehensive Testing**
+- **File**: `src/services/db/__tests__/contact-limit.service.test.ts`
+- **Changes**: Created full test suite for contact limit functionality
+- **Purpose**: Verify limit calculations, obfuscation, and edge cases
+- **Coverage**: All major service methods with mocked database calls
+
+### 8. **Router Integration**
+- **File**: `src/server/api/root.ts`
+- **Changes**: Added subscription router to main TRPC router
+- **Purpose**: Make subscription endpoints available to frontend
+
+### 9. **Inbox Sidebar UI Enhancements**
+- **File**: `src/components/inbox-sidebar.tsx`
+- **Changes**: Enhanced sidebar to handle and display obfuscated chats
+- **Features**:
+  - **Obfuscation Detection**: Identifies when chats are obfuscated due to contact limits
+  - **Visual Indicators**: Premium badges, amber styling for obfuscated contacts
+  - **Upgrade Prompts**: Click-to-upgrade functionality with toast notifications
+  - **Context Menu Updates**: Disabled actions for obfuscated chats, upgrade options
+  - **Contact Limit Status**: Header shows current usage (e.g., "Contacts: 150/100")
+  - **Responsive Design**: Clear visual distinction between regular and premium contacts
+
+### 10. **Complete Chat Access Protection**
+- **Files**: `src/server/api/routers/inbox.ts`, `src/app/(app)/inbox/[chatId]/page.tsx`
+- **Changes**: Added comprehensive protection against accessing obfuscated chats
+- **Protection Layers**:
+  - **Chat Details**: FORBIDDEN error when accessing obfuscated chat details
+  - **Chat Messages**: FORBIDDEN error when fetching messages from obfuscated chats
+  - **Send Messages**: Prevents sending messages to obfuscated contacts
+  - **Mark as Read**: Blocks marking obfuscated chats as read
+  - **Direct URL Access**: Chat page shows upgrade prompt for blocked chats
+  - **Error Handling**: Graceful error messages with upgrade call-to-actions
 
 ## Technical Implementation Details
 
+### Contact Definition
+A contact is defined as:
+- A profile that sends messages to the user (incoming messages)
+- A profile that views the user's LinkedIn profile
+
+### Contact Counting Logic
+Complex SQL queries using UNION to count unique contacts across:
+1. **Message senders**: From `UnipileContact` joined with incoming `UnipileMessage` records
+2. **Profile viewers**: From `UnipileProfileView` records with non-null viewer IDs
+3. **Deduplication**: Using UNION to ensure unique contact count across both sources
+
+### Subscription Tiers & Limits
+- **FREE**: 100 contacts - Basic functionality for free users
+- **STARTER**: 1000 contacts - For growing professionals
+- **PROFESSIONAL**: 10000 contacts - For active networkers
+- **ENTERPRISE**: 10000 contacts - Same as professional currently
+- **GOLD**: 10000 contacts - Trial plan with full access
+
+### Obfuscation Strategy
+When contact limits are exceeded:
+1. **Chat sorting**: Prioritize recent contacts (by last_message_at)
+2. **Contact tracking**: Count unique contacts to apply limits fairly
+3. **Data obfuscation**: Replace contact details with "Premium Contact" placeholders
+4. **Message hiding**: Replace message content with upgrade prompts
+5. **Profile masking**: Remove profile images, URLs, and personal details
+
 ### Data Flow
-1. **User Action**: Click "Mark as read" in sidebar or chat view
-2. **TRPC Mutation**: Calls `markChatAsRead` with chatId
-3. **Permission Check**: Verifies user owns the chat
-4. **Unipile Update**: Calls PATCH `/chats/{external_id}` with `action: "mark_as_read"`
-5. **Database Update**: Sets `unread_count = 0` in local database
-6. **UI Refresh**: Refetches chat data to update visual indicators
-
-### Error Handling
-- Validates chat ownership before processing
-- Handles Unipile API failures gracefully
-- Shows user-friendly error messages via toast notifications
-- Proper TRPC error codes for different failure scenarios
-
-### UI/UX Features
-- **Visual Indicators**: Blue dots show unread status in sidebar
-- **Context Menus**: Right-click style interactions for chat actions
-- **Loading States**: Disabled buttons and loading text during processing
-- **Responsive Design**: Works across different screen sizes
-- **Accessibility**: Proper ARIA labels and keyboard navigation
+1. **Chat Request**: User requests chats via `getChats` endpoint
+2. **Limit Check**: Service checks user's subscription plan and contact count
+3. **Contact Counting**: SQL queries calculate unique contact interactions
+4. **Sorting & Filtering**: Recent contacts prioritized within limits
+5. **Obfuscation**: Excess contacts get placeholder data
+6. **Response**: Modified chat list returned to frontend
 
 ## Current Status
 
-✅ **COMPLETED**: Full mark as read functionality
-- Both sidebar and chat page implementations
-- Database and Unipile API synchronization
-- Error handling and user feedback
-- UI indicators and loading states
+✅ **COMPLETED**: Full contact limits system
+- Subscription-based contact limits with three tiers (100, 1000, 10000)
+- Contact counting from messages and profile views
+- Chat obfuscation when limits exceeded
+- Configuration-based limits (no magic numbers)
+- Comprehensive test coverage
+- TRPC endpoints for limit status and plan information
 
 ## Next Steps
 
-The mark as read feature is fully functional and ready for testing. Users can now:
-1. Mark chats as read from the sidebar context menu
-2. Mark chats as read from within the chat interface
-3. See visual indicators for unread chats
-4. Receive feedback on successful/failed operations
+The contact limits feature is fully functional and ready for testing. The system now:
+1. **Enforces limits**: Automatically applies subscription-based contact limits
+2. **Counts accurately**: Uses complex SQL to count unique contact interactions
+3. **Obfuscates intelligently**: Prioritizes recent contacts and hides excess ones
+4. **Provides transparency**: Exposes limit status and remaining count to users
+5. **Scales configurably**: Limits defined in configuration files for easy updates
+
+## UI/UX Features Implemented
+
+The frontend now provides a complete experience for contact limits:
+
+### **Visual Indicators**
+- **Premium Badges**: Obfuscated contacts show "Premium" labels
+- **Color Coding**: Amber/orange styling distinguishes limited contacts
+- **Avatar Hiding**: Profile images removed for obfuscated contacts
+- **Status Header**: Shows "Contacts: X/Y" with current usage
+
+### **Interactive Elements**
+- **Upgrade Prompts**: Click obfuscated chats for upgrade notifications
+- **Toast Messages**: Rich notifications with upgrade buttons
+- **Context Menus**: Disabled actions for premium contacts, upgrade options
+- **One-click Billing**: Direct navigation to billing/upgrade page
+
+### **User Experience**
+- **Progressive Disclosure**: Recent contacts prioritized within limits
+- **Clear Messaging**: Descriptive upgrade prompts and status messages
+- **Seamless Navigation**: Automatic routing to relevant upgrade pages
+- **Accessibility**: Proper color contrast and semantic markup
+- **Complete Protection**: No way to access obfuscated chats through any route
+- **Graceful Degradation**: Friendly upgrade prompts instead of harsh errors
 
 ## Technical Notes
 

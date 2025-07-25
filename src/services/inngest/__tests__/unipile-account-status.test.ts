@@ -14,7 +14,13 @@ vi.mock("~/middleware/services.middleware", () => ({
 // Mock the Inngest client
 vi.mock("../../inngest", () => ({
 	inngest: {
-		createFunction: vi.fn(),
+		createFunction: vi.fn((config, event, fn) => {
+			return {
+				id: config.id,
+				event: event,
+				handler: fn,
+			};
+		}),
 	},
 }));
 

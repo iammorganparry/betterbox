@@ -36,11 +36,24 @@ export const createMockUnipileContactService = () => ({
   findContactByExternalId: vi.fn(),
 })
 
+export const createMockContactLimitService = () => ({
+  getContactLimitStatus: vi.fn().mockResolvedValue({
+    limit: 100,
+    count: 50,
+    isExceeded: false,
+    remainingContacts: 50,
+  }),
+  applyContactLimitsToChats: vi.fn().mockImplementation((userId, chats) => Promise.resolve(chats)),
+  countUserContacts: vi.fn().mockResolvedValue(50),
+  hasExceededLimit: vi.fn().mockResolvedValue(false),
+})
+
 // Create complete services mock for TRPC context
 export const createMockServices = () => ({
   unipileChatService: createMockUnipileChatService(),
   unipileMessageService: createMockUnipileMessageService(),
   unipileContactService: createMockUnipileContactService(),
+  contactLimitService: createMockContactLimitService(),
 })
 
 // Mock TRPC context

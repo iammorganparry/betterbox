@@ -295,7 +295,7 @@ describe("inboxRouter.sendMessage", () => {
 		expect(
 			mockContext.services.unipileMessageService.upsertMessage,
 		).toHaveBeenCalledWith(
-			"unipile-account-internal-id",
+			"account-123",
 			expect.stringMatching(/^local-/), // Should generate a local ID
 			expect.objectContaining({
 				content: "Hello, world!",

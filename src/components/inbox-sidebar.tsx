@@ -101,6 +101,7 @@ interface GroupedChat {
   avatar: string | null;
   initials: string;
   provider: string;
+  isObfuscated?: boolean; // Flag to indicate if this chat is obfuscated due to contact limits
 }
 
 interface FolderData {
@@ -152,6 +153,7 @@ interface SortableChatItemProps {
   ) => Promise<void>;
   deletingChatId: string | null;
   handleSoftDeleteChat: (chatId: string, chatName: string) => void;
+  router: ReturnType<typeof useRouter>;
 }
 
 const SortableChatItem = ({
@@ -168,6 +170,7 @@ const SortableChatItem = ({
   handleRemoveFromFolder,
   deletingChatId,
   handleSoftDeleteChat,
+  router,
 }: SortableChatItemProps) => {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: mail.email });
@@ -184,9 +187,8 @@ const SortableChatItem = ({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex w-full items-center border-b last:border-b-0 hover:bg-muted/50 ${
-        selectedChatId === mail.email ? "bg-muted" : ""
-      }`}
+      className={`group flex w-full items-center border-b last:border-b-0 hover:bg-muted/50 ${selectedChatId === mail.email ? "bg-muted" : ""
+        } ${mail.isObfuscated ? "bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200" : ""}`}
     >
       {/* Drag Handle */}
       <div
@@ -199,7 +201,20 @@ const SortableChatItem = ({
 
       <button
         type="button"
-        onClick={() => handleChatClick(mail.email, hasUnreadMessages)}
+        onClick={() => {
+          if (mail.isObfuscated) {
+            // For obfuscated chats, show upgrade prompt instead of navigating
+            toast.info("Upgrade your plan to view this contact", {
+              description: "This contact is beyond your current plan's limit",
+              action: {
+                label: "Upgrade",
+                onClick: () => router.push("/billing")
+              }
+            });
+          } else {
+            handleChatClick(mail.email, hasUnreadMessages);
+          }
+        }}
         className="flex flex-1 flex-col items-start gap-2 whitespace-nowrap p-4 text-left text-sm leading-tight"
       >
         <div className="flex w-full items-center gap-3">
@@ -208,7 +223,16 @@ const SortableChatItem = ({
             <AvatarFallback className="text-xs">{mail.initials}</AvatarFallback>
           </Avatar>
           <div className="flex flex-1 items-center justify-between">
-            <span className="font-medium">{mail.name}</span>
+            <div className="flex items-center gap-2">
+              <span className={`font-medium ${mail.isObfuscated ? "text-amber-700" : ""}`}>
+                {mail.name}
+              </span>
+              {mail.isObfuscated && (
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-amber-800 text-xs font-medium">
+                  Premium
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground text-xs">{mail.date}</span>
               {hasUnreadMessages && (
@@ -217,10 +241,10 @@ const SortableChatItem = ({
             </div>
           </div>
         </div>
-        <span className="ml-11 font-medium text-muted-foreground">
+        <span className={`ml-11 font-medium text-muted-foreground ${mail.isObfuscated ? "text-amber-600" : ""}`}>
           {mail.subject}
         </span>
-        <span className="ml-11 line-clamp-2 w-[260px] whitespace-break-spaces text-muted-foreground text-xs">
+        <span className={`ml-11 line-clamp-2 w-[260px] whitespace-break-spaces text-muted-foreground text-xs ${mail.isObfuscated ? "text-amber-600 italic" : ""}`}>
           {mail.teaser}
         </span>
       </button>
@@ -239,7 +263,21 @@ const SortableChatItem = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {hasUnreadMessages && (
+            {/* Show upgrade prompt for obfuscated chats */}
+            {mail.isObfuscated && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  router.push("/billing");
+                }}
+                className="text-amber-600 focus:text-amber-600"
+              >
+                <span className="mr-2 h-4 w-4">✨</span>
+                Upgrade to access
+              </DropdownMenuItem>
+            )}
+
+            {hasUnreadMessages && !mail.isObfuscated && (
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
@@ -254,8 +292,8 @@ const SortableChatItem = ({
               </DropdownMenuItem>
             )}
 
-            {/* Folder assignment submenu */}
-            {foldersData && foldersData.length > 0 && (
+            {/* Folder assignment submenu - disabled for obfuscated chats */}
+            {foldersData && foldersData.length > 0 && !mail.isObfuscated && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
@@ -284,8 +322,8 @@ const SortableChatItem = ({
               </DropdownMenu>
             )}
 
-            {/* Remove from folder option - only show when viewing a specific folder */}
-            {selectedFolderId !== "all" && (
+            {/* Remove from folder option - only show when viewing a specific folder and not obfuscated */}
+            {selectedFolderId !== "all" && !mail.isObfuscated && (
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
@@ -305,19 +343,22 @@ const SortableChatItem = ({
               </DropdownMenuItem>
             )}
 
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                handleSoftDeleteChat(mail.email, mail.name);
-              }}
-              disabled={deletingChatId === mail.email}
-              className="text-red-600 focus:text-red-600"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              {deletingChatId === mail.email
-                ? "Deleting..."
-                : "Delete conversation"}
-            </DropdownMenuItem>
+            {/* Delete option - disabled for obfuscated chats */}
+            {!mail.isObfuscated && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSoftDeleteChat(mail.email, mail.name);
+                }}
+                disabled={deletingChatId === mail.email}
+                className="text-red-600 focus:text-red-600"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {deletingChatId === mail.email
+                  ? "Deleting..."
+                  : "Delete conversation"}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -344,20 +385,18 @@ const DroppableFolder = ({
       ref={setNodeRef}
       onClick={onClick}
       type="button"
-      className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-        isSelected
-          ? "bg-primary text-primary-foreground"
-          : isOver
+      className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isSelected
+        ? "bg-primary text-primary-foreground"
+        : isOver
           ? "bg-muted/70"
           : "hover:bg-muted/50"
-      }`}
+        }`}
     >
       <Folder className="h-4 w-4" />
       <span className="flex-1 text-left">{folder.name}</span>
       <span
-        className={`text-muted-foreground text-xs ${
-          isSelected ? "text-primary-foreground" : ""
-        }`}
+        className={`text-muted-foreground text-xs ${isSelected ? "text-primary-foreground" : ""
+          }`}
       >
         {folder.chat_count}
       </span>
@@ -414,6 +453,9 @@ export default function InboxSidebar() {
     limit: 50,
     // provider: "linkedin", // Removed to get all providers
   });
+
+  // Fetch contact limit status
+  const { data: contactLimitStatus } = api.subscription.getContactLimitStatus.useQuery();
 
   // Fetch folders
   const {
@@ -632,8 +674,8 @@ export default function InboxSidebar() {
     selectedFolderId === "all"
       ? typedChats
       : (folderChatsData as unknown as ChatFolderAssignment[])?.map(
-          (assignment) => assignment.chat
-        ) || [];
+        (assignment) => assignment.chat
+      ) || [];
 
   // Filter chats based on selected filter mode
   const filteredChats = chatsToDisplay.filter((chat: ChatData) => {
@@ -673,33 +715,43 @@ export default function InboxSidebar() {
     const contactName =
       contact?.full_name || contact?.first_name || "Unknown Contact";
 
+    // Check if this chat is obfuscated (contact limits exceeded)
+    const isObfuscated = contact?.full_name === "Premium Contact" ||
+      contact?.headline === "Upgrade to view this contact";
+
     // Get the latest message for teaser
     const latestMessage = chat.UnipileMessage?.[0];
-    const messageTeaser = latestMessage?.content
+    let messageTeaser = latestMessage?.content
       ? latestMessage.content.split(" ").slice(0, 8).join(" ") +
-        (latestMessage.content.split(" ").length > 8 ? "..." : "")
+      (latestMessage.content.split(" ").length > 8 ? "..." : "")
       : "No messages yet";
+
+    // If obfuscated, the message content will also be obfuscated
+    if (isObfuscated && latestMessage?.content?.includes("Upgrade to view messages")) {
+      messageTeaser = latestMessage.content;
+    }
 
     return {
       email: chat.id, // Use chat ID as unique identifier
       name: contactName,
       date: chat.last_message_at
         ? formatDistanceToNow(new Date(chat.last_message_at), {
-            addSuffix: true,
-          })
+          addSuffix: true,
+        })
         : "",
       subject: contact?.headline || "",
       teaser: messageTeaser,
-      avatar: contact?.profile_image_url || null,
+      avatar: isObfuscated ? null : (contact?.profile_image_url || null), // Hide avatar for obfuscated contacts
       initials: contactName
         ? contactName
-            .split(" ")
-            .map((n: string) => n[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2)
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2)
         : "UC",
       provider: chat.provider,
+      isObfuscated, // Add the obfuscation flag
     };
   });
 
@@ -759,6 +811,32 @@ export default function InboxSidebar() {
                 </Select>
               </div>
             </div>
+
+            {/* Contact Limit Status */}
+            {contactLimitStatus && (
+              <div className={`mt-3 rounded-md border p-2 text-xs ${contactLimitStatus.isExceeded
+                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                  : "border-gray-200 bg-gray-50 text-gray-600"
+                }`}>
+                <div className="flex items-center justify-between">
+                  <span>Contacts: {contactLimitStatus.count}/{contactLimitStatus.limit}</span>
+                  {contactLimitStatus.isExceeded && (
+                    <button
+                      onClick={() => router.push("/billing")}
+                      className="text-amber-600 hover:text-amber-800 underline"
+                    >
+                      Upgrade
+                    </button>
+                  )}
+                </div>
+                {contactLimitStatus.isExceeded && (
+                  <div className="mt-1 text-amber-600">
+                    Some contacts are hidden. Upgrade to see all contacts.
+                  </div>
+                )}
+              </div>
+            )}
+
             <Input placeholder="Type to search..." className="mt-3" />
           </div>
 
@@ -853,8 +931,8 @@ export default function InboxSidebar() {
                 {filterMode === "unread"
                   ? "No unread conversations"
                   : filterMode === "read"
-                  ? "No read conversations"
-                  : "No conversations found"}
+                    ? "No read conversations"
+                    : "No conversations found"}
               </div>
             ) : (
               <SortableContext
@@ -889,6 +967,7 @@ export default function InboxSidebar() {
                             handleRemoveFromFolder={handleRemoveFromFolder}
                             deletingChatId={deletingChatId}
                             handleSoftDeleteChat={handleSoftDeleteChat}
+                            router={router}
                           />
                         ))}
                       </div>

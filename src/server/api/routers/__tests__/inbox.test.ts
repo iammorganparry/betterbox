@@ -30,6 +30,7 @@ import { inboxRouter } from '../inbox'
 
 describe('inboxRouter - getChats', () => {
   let mockUnipileChatService: any
+  let mockContactLimitService: any
   let mockContext: any
 
   beforeEach(() => {
@@ -40,11 +41,23 @@ describe('inboxRouter - getChats', () => {
       getChatsByUser: vi.fn(),
     }
 
+    // Mock the contact limit service
+    mockContactLimitService = {
+      getContactLimitStatus: vi.fn().mockResolvedValue({
+        limit: 100,
+        count: 50,
+        isExceeded: false,
+        remainingContacts: 50,
+      }),
+      applyContactLimitsToChats: vi.fn().mockImplementation((userId, chats) => Promise.resolve(chats)),
+    }
+
     // Mock the context
     mockContext = {
       userId: 'test-user-id',
       services: {
         unipileChatService: mockUnipileChatService,
+        contactLimitService: mockContactLimitService,
       },
     }
   })
@@ -222,6 +235,7 @@ describe('inboxRouter - getChats', () => {
 
 describe('inboxRouter - markChatAsRead', () => {
   let mockUnipileChatService: any
+  let mockContactLimitService: any
   let mockContext: any
 
   beforeEach(() => {
@@ -233,11 +247,23 @@ describe('inboxRouter - markChatAsRead', () => {
       markChatAsRead: vi.fn(),
     }
 
+    // Mock the contact limit service
+    mockContactLimitService = {
+      getContactLimitStatus: vi.fn().mockResolvedValue({
+        limit: 100,
+        count: 50,
+        isExceeded: false,
+        remainingContacts: 50,
+      }),
+      applyContactLimitsToChats: vi.fn().mockImplementation((userId, chats) => Promise.resolve(chats)),
+    }
+
     // Mock the context
     mockContext = {
       userId: 'test-user-id',
       services: {
         unipileChatService: mockUnipileChatService,
+        contactLimitService: mockContactLimitService,
       },
     }
   })
@@ -257,7 +283,7 @@ describe('inboxRouter - markChatAsRead', () => {
         },
       }
       const mockUnipileResponse = {
-        object: 'ChatAction',
+        object: 'ChatPatched',
         chat_id: 'external-chat-id',
         account_id: 'linkedin-account-1',
         action: 'mark_as_read',
@@ -285,7 +311,7 @@ describe('inboxRouter - markChatAsRead', () => {
       expect(mockUnipileChatService.getChatWithDetails).toHaveBeenCalledWith('test-chat-id')
       expect(mockUnipileService.patchChat).toHaveBeenCalledWith(
         'external-chat-id',
-        { action: 'mark_as_read' },
+        { action: 'setReadStatus', value: true },
         'linkedin-account-1'
       )
       expect(mockUnipileChatService.markChatAsRead).toHaveBeenCalledWith('test-chat-id')
@@ -391,7 +417,7 @@ describe('inboxRouter - markChatAsRead', () => {
       mockUnipileChatService.getChatWithDetails.mockResolvedValue(mockChatDetails)
       mockUnipileService.patchChat.mockResolvedValue({
         success: true,
-        object: 'ChatAction',
+        object: 'ChatPatched',
       })
       mockUnipileChatService.markChatAsRead.mockResolvedValue({
         ...mockChatDetails,
@@ -428,7 +454,7 @@ describe('inboxRouter - markChatAsRead', () => {
       mockUnipileChatService.getChatWithDetails.mockResolvedValue(mockChatDetails)
       mockUnipileService.patchChat.mockResolvedValue({
         success: true,
-        object: 'ChatAction',
+        object: 'ChatPatched',
       })
       mockUnipileChatService.markChatAsRead.mockResolvedValue({
         ...mockChatDetails,
@@ -444,7 +470,7 @@ describe('inboxRouter - markChatAsRead', () => {
       expect(result.success).toBe(true)
       expect(mockUnipileService.patchChat).toHaveBeenCalledWith(
         'external-chat-id',
-        { action: 'mark_as_read' },
+        { action: 'setReadStatus', value: true },
         'linkedin-account-1'
       )
     })
@@ -463,7 +489,7 @@ describe('inboxRouter - markChatAsRead', () => {
         },
       }
       const mockUnipileResponse = {
-        object: 'ChatAction',
+        object: 'ChatPatched',
         chat_id: 'external-chat-id',
         account_id: 'linkedin-account-1',
         action: 'mark_as_read',
@@ -473,14 +499,15 @@ describe('inboxRouter - markChatAsRead', () => {
 
       mockUnipileChatService.getChatWithDetails.mockResolvedValue(mockChatDetails)
       mockUnipileService.patchChat.mockResolvedValue(mockUnipileResponse)
+      // Don't mock markChatAsRead as it shouldn't be called due to Unipile failure
 
       const caller = inboxRouter.createCaller(mockContext)
 
       // Act & Assert
       await expect(caller.markChatAsRead(input)).rejects.toThrow(
-        new TRPCError({
+        expect.objectContaining({
           code: 'BAD_GATEWAY',
-          message: 'Failed to mark chat as read in Unipile',
+          message: expect.stringContaining('Chat is read-only'),
         })
       )
       expect(mockUnipileChatService.markChatAsRead).not.toHaveBeenCalled()
@@ -509,7 +536,7 @@ describe('inboxRouter - markChatAsRead', () => {
       await expect(caller.markChatAsRead(input)).rejects.toThrow(
         expect.objectContaining({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to mark chat as read',
+          message: expect.stringContaining('Failed to mark chat as read'),
         })
       )
       expect(mockUnipileChatService.markChatAsRead).not.toHaveBeenCalled()
@@ -529,7 +556,7 @@ describe('inboxRouter - markChatAsRead', () => {
         },
       }
       const mockUnipileResponse = {
-        object: 'ChatAction',
+        object: 'ChatPatched',
         chat_id: 'external-chat-id',
         account_id: 'linkedin-account-1',
         action: 'mark_as_read',
@@ -549,7 +576,7 @@ describe('inboxRouter - markChatAsRead', () => {
       await expect(caller.markChatAsRead(input)).rejects.toThrow(
         expect.objectContaining({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to mark chat as read',
+          message: expect.stringContaining('Failed to mark chat as read'),
         })
       )
     })
@@ -581,7 +608,7 @@ describe('inboxRouter - markChatAsRead', () => {
       mockUnipileChatService.getChatWithDetails.mockResolvedValue(mockChatDetails)
       mockUnipileService.patchChat.mockResolvedValue({
         success: true,
-        object: 'ChatAction',
+        object: 'ChatPatched',
         chat_id: 'external-chat-id',
         account_id: 'linkedin-account-1',
         action: 'mark_as_read',
@@ -599,7 +626,7 @@ describe('inboxRouter - markChatAsRead', () => {
       // Assert
       expect(mockUnipileService.patchChat).toHaveBeenCalledWith(
         'external-chat-id',
-        { action: 'mark_as_read' },
+        { action: 'setReadStatus', value: true },
         'linkedin-account-1'
       )
     })

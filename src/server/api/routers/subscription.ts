@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "~/server/api/trpc";
+import { getAllPlanLimits } from "~/config/contact-limits.config";
 
 // TODO: This router will work after running the Prisma migration and updating UserService
 export const subscriptionRouter = createTRPCRouter({
@@ -298,5 +299,26 @@ export const subscriptionRouter = createTRPCRouter({
 			daysRemaining,
 			plan: subscription.plan,
 		};
+	}),
+
+	/**
+	 * Get contact limit status
+	 */
+	getContactLimitStatus: protectedProcedure.query(async ({ ctx }) => {
+		const { contactLimitService } = ctx.services;
+
+		const limitStatus = await contactLimitService.getContactLimitStatus(
+			ctx.userId!,
+		);
+
+		return limitStatus;
+	}),
+
+	/**
+	 * Get all subscription plans with their contact limits
+	 * Public endpoint for pricing page
+	 */
+	getPlanLimits: publicProcedure.query(async () => {
+		return getAllPlanLimits();
 	}),
 });
