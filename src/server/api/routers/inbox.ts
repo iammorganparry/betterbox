@@ -220,12 +220,29 @@ export const inboxRouter = createTRPCRouter({
 		)
 		.mutation(async ({ ctx, input }) => {
 			try {
+				console.log("🔍 Starting markChatAsRead for chatId:", input.chatId);
+
 				// First, get the chat details to find the external ID and account
 				const chat = await ctx.services.unipileChatService.getChatWithDetails(
 					input.chatId,
 				);
 
+				console.log("📊 Chat details retrieved:", {
+					found: !!chat,
+					externalId: chat?.external_id,
+					unreadCount: chat?.unread_count,
+					accountId: chat?.unipile_account?.account_id,
+					userId: chat?.unipile_account?.user_id,
+					accountProvider: chat?.unipile_account?.provider,
+					accountStatus: chat?.unipile_account?.status,
+					chatProvider: chat?.provider,
+					chatName: chat?.name,
+					chatCreatedAt: chat?.created_at,
+					chatUpdatedAt: chat?.updated_at,
+				});
+
 				if (!chat) {
+					console.error("❌ Chat not found for ID:", input.chatId);
 					throw new TRPCError({
 						code: "NOT_FOUND",
 						message: "Chat not found",
@@ -234,6 +251,12 @@ export const inboxRouter = createTRPCRouter({
 
 				// Verify the chat belongs to the current user
 				if (chat.unipile_account.user_id !== ctx.userId) {
+					console.error(
+						"❌ Permission denied. Chat belongs to user:",
+						chat.unipile_account.user_id,
+						"but current user is:",
+						ctx.userId,
+					);
 					throw new TRPCError({
 						code: "FORBIDDEN",
 						message: "You can only mark your own chats as read",
@@ -242,32 +265,62 @@ export const inboxRouter = createTRPCRouter({
 
 				// Skip if already read (unread_count is 0)
 				if (chat.unread_count === 0) {
+					console.log("ℹ️ Chat already marked as read");
 					return { success: true, message: "Chat is already marked as read" };
 				}
 
 				// Create Unipile service instance
+				console.log("🔧 Creating Unipile service with env vars:", {
+					hasApiKey: !!env.UNIPILE_API_KEY,
+					hasDsn: !!env.UNIPILE_DSN,
+					apiKeyLength: env.UNIPILE_API_KEY?.length,
+					dsn: env.UNIPILE_DSN,
+				});
+
 				const unipileService = createUnipileService({
 					apiKey: env.UNIPILE_API_KEY,
 					dsn: env.UNIPILE_DSN,
 				});
 
 				// Mark as read in Unipile first
+				console.log("🔄 Calling Unipile patchChat with:", {
+					externalId: chat.external_id,
+					action: "setReadStatus",
+					value: true,
+					accountId: chat.unipile_account.account_id,
+				});
+
 				const unipileResponse = await unipileService.patchChat(
 					chat.external_id, // Use external chat ID for Unipile
-					{ action: "mark_as_read" },
+					{ action: "setReadStatus", value: true }, // Use correct action name
 					chat.unipile_account.account_id, // Use the account_id from the database
 				);
 
-				if (!unipileResponse.success) {
+				console.log("📥 Unipile response received:", {
+					object: unipileResponse.object,
+				});
+
+				// Check if response is valid (API returns {"object": "ChatPatched"})
+				if (unipileResponse.object !== "ChatPatched") {
+					console.error(
+						"❌ Unipile API returned unexpected response:",
+						unipileResponse,
+					);
 					throw new TRPCError({
 						code: "BAD_GATEWAY",
-						message: "Failed to mark chat as read in Unipile",
+						message: `Unexpected response from Unipile: ${unipileResponse.object || "Unknown response"}`,
 					});
 				}
 
 				// Update the database
+				console.log("💾 Updating database for chatId:", input.chatId);
 				const updatedChat =
 					await ctx.services.unipileChatService.markChatAsRead(input.chatId);
+
+				console.log("✅ Chat marked as read successfully:", {
+					chatId: updatedChat.id,
+					newUnreadCount: updatedChat.unread_count,
+				});
 
 				return {
 					success: true,
@@ -276,12 +329,19 @@ export const inboxRouter = createTRPCRouter({
 					unipileResponse,
 				};
 			} catch (error) {
+				console.error("❌ Error in markChatAsRead:", {
+					chatId: input.chatId,
+					error: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+					type: error?.constructor?.name,
+				});
+
 				if (error instanceof TRPCError) {
 					throw error;
 				}
 				throw new TRPCError({
 					code: "INTERNAL_SERVER_ERROR",
-					message: "Failed to mark chat as read",
+					message: `Failed to mark chat as read: ${error instanceof Error ? error.message : String(error)}`,
 					cause: error,
 				});
 			}
@@ -417,45 +477,51 @@ export const inboxRouter = createTRPCRouter({
 					});
 				}
 
-				// Store the message in our database if Unipile returns message data
-				let savedMessage = null;
-				if (sendMessageResponse.message) {
-					const messageData = sendMessageResponse.message;
-					savedMessage = await ctx.services.unipileMessageService.upsertMessage(
+				// Always create a local copy of the sent message for immediate display
+				// This ensures the user sees their message right away, regardless of Unipile response
+				const messageId =
+					sendMessageResponse.message?.id ||
+					`local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+				const savedMessage =
+					await ctx.services.unipileMessageService.upsertMessage(
 						chat.unipile_account.id,
-						messageData.id,
+						messageId,
 						{
-							content: messageData.text || input.content,
+							content: input.content,
 							is_read: true, // User's own message is considered read
 						},
 						{
 							chat: { connect: { id: chat.id } },
 							external_chat_id: chat.external_id,
-							sender_id: messageData.sender_id,
-							message_type: messageData.message_type?.toLowerCase() || "text",
-							content: messageData.text || input.content,
+							sender_id:
+								sendMessageResponse.message?.sender_id ||
+								chat.unipile_account.account_id,
+							message_type:
+								sendMessageResponse.message?.message_type?.toLowerCase() ||
+								"text",
+							content: input.content,
 							is_read: true,
 							is_outgoing: true, // This is an outgoing message
-							sent_at: messageData.timestamp
-								? new Date(messageData.timestamp)
+							sent_at: sendMessageResponse.message?.timestamp
+								? new Date(sendMessageResponse.message.timestamp)
 								: new Date(),
-							sender_urn: messageData.sender_urn,
-							attendee_type: messageData.attendee_type,
-							attendee_distance: messageData.attendee_distance,
-							seen: messageData.seen || 1,
-							hidden: messageData.hidden || 0,
-							deleted: messageData.deleted || 0,
-							edited: messageData.edited || 0,
-							is_event: messageData.is_event || 0,
-							delivered: messageData.delivered || 1,
-							behavior: messageData.behavior || 0,
-							event_type: messageData.event_type || 0,
-							replies: messageData.replies || 0,
-							subject: messageData.subject,
-							parent: messageData.parent,
+							sender_urn: sendMessageResponse.message?.sender_urn,
+							attendee_type: sendMessageResponse.message?.attendee_type,
+							attendee_distance: sendMessageResponse.message?.attendee_distance,
+							seen: sendMessageResponse.message?.seen || 1,
+							hidden: sendMessageResponse.message?.hidden || 0,
+							deleted: sendMessageResponse.message?.deleted || 0,
+							edited: sendMessageResponse.message?.edited || 0,
+							is_event: sendMessageResponse.message?.is_event || 0,
+							delivered: sendMessageResponse.message?.delivered || 1,
+							behavior: sendMessageResponse.message?.behavior || 0,
+							event_type: sendMessageResponse.message?.event_type || 0,
+							replies: sendMessageResponse.message?.replies || 0,
+							subject: sendMessageResponse.message?.subject,
+							parent: sendMessageResponse.message?.parent,
 						},
 					);
-				}
 
 				// Update chat's last_message_at timestamp
 				await ctx.services.unipileChatService.updateLastMessageAt(
@@ -489,7 +555,7 @@ export const inboxRouter = createTRPCRouter({
 	getFolders: protectedProcedure.query(async ({ ctx }) => {
 		try {
 			return await ctx.services.chatFolderService.getFoldersWithChatCounts(
-				ctx.userId
+				ctx.userId,
 			);
 		} catch (error) {
 			throw new TRPCError({
@@ -507,13 +573,13 @@ export const inboxRouter = createTRPCRouter({
 			z.object({
 				name: z.string().min(1).max(50),
 				color: z.string().optional(),
-			})
+			}),
 		)
 		.mutation(async ({ ctx, input }) => {
 			try {
 				return await ctx.services.chatFolderService.createFolder(
 					ctx.userId,
-					input
+					input,
 				);
 			} catch (error) {
 				throw new TRPCError({
@@ -533,7 +599,7 @@ export const inboxRouter = createTRPCRouter({
 				name: z.string().min(1).max(50).optional(),
 				color: z.string().optional(),
 				sort_order: z.number().optional(),
-			})
+			}),
 		)
 		.mutation(async ({ ctx, input }) => {
 			try {
@@ -541,7 +607,7 @@ export const inboxRouter = createTRPCRouter({
 				return await ctx.services.chatFolderService.updateFolder(
 					folderId,
 					ctx.userId,
-					updateData
+					updateData,
 				);
 			} catch (error) {
 				throw new TRPCError({
@@ -558,13 +624,13 @@ export const inboxRouter = createTRPCRouter({
 		.input(
 			z.object({
 				folderId: z.string(),
-			})
+			}),
 		)
 		.mutation(async ({ ctx, input }) => {
 			try {
 				return await ctx.services.chatFolderService.deleteFolder(
 					input.folderId,
-					ctx.userId
+					ctx.userId,
 				);
 			} catch (error) {
 				throw new TRPCError({
@@ -582,13 +648,13 @@ export const inboxRouter = createTRPCRouter({
 			z.object({
 				chatId: z.string(),
 				folderId: z.string(),
-			})
+			}),
 		)
 		.mutation(async ({ ctx, input }) => {
 			try {
 				// Verify the chat belongs to the user
 				const chat = await ctx.services.unipileChatService.getChatWithDetails(
-					input.chatId
+					input.chatId,
 				);
 
 				if (!chat) {
@@ -608,7 +674,7 @@ export const inboxRouter = createTRPCRouter({
 				// Verify the folder belongs to the user
 				const folder = await ctx.services.chatFolderService.getFolderById(
 					input.folderId,
-					ctx.userId
+					ctx.userId,
 				);
 
 				if (!folder) {
@@ -618,11 +684,27 @@ export const inboxRouter = createTRPCRouter({
 					});
 				}
 
-				return await ctx.services.chatFolderService.assignChatToFolder(
-					input.chatId,
-					input.folderId,
-					ctx.userId
-				);
+				// Check if chat is already in the folder
+				const isAlreadyInFolder =
+					await ctx.services.chatFolderService.isChatInFolder(
+						input.chatId,
+						input.folderId,
+					);
+
+				const assignment =
+					await ctx.services.chatFolderService.assignChatToFolder(
+						input.chatId,
+						input.folderId,
+						ctx.userId,
+					);
+
+				return {
+					assignment,
+					wasAlreadyInFolder: isAlreadyInFolder,
+					message: isAlreadyInFolder
+						? "Chat was already in this folder"
+						: "Chat assigned to folder successfully",
+				};
 			} catch (error) {
 				if (error instanceof TRPCError) {
 					throw error;
@@ -642,13 +724,13 @@ export const inboxRouter = createTRPCRouter({
 			z.object({
 				chatId: z.string(),
 				folderId: z.string(),
-			})
+			}),
 		)
 		.mutation(async ({ ctx, input }) => {
 			try {
 				return await ctx.services.chatFolderService.removeChatFromFolder(
 					input.chatId,
-					input.folderId
+					input.folderId,
 				);
 			} catch (error) {
 				throw new TRPCError({
@@ -665,14 +747,14 @@ export const inboxRouter = createTRPCRouter({
 		.input(
 			z.object({
 				folderId: z.string(),
-			})
+			}),
 		)
 		.query(async ({ ctx, input }) => {
 			try {
 				// Verify the folder belongs to the user
 				const folder = await ctx.services.chatFolderService.getFolderById(
 					input.folderId,
-					ctx.userId
+					ctx.userId,
 				);
 
 				if (!folder) {
@@ -683,7 +765,7 @@ export const inboxRouter = createTRPCRouter({
 				}
 
 				return await ctx.services.chatFolderService.getChatsInFolder(
-					input.folderId
+					input.folderId,
 				);
 			} catch (error) {
 				if (error instanceof TRPCError) {
@@ -703,13 +785,13 @@ export const inboxRouter = createTRPCRouter({
 		.input(
 			z.object({
 				chatId: z.string(),
-			})
+			}),
 		)
 		.query(async ({ ctx, input }) => {
 			try {
 				// Verify the chat belongs to the user
 				const chat = await ctx.services.unipileChatService.getChatWithDetails(
-					input.chatId
+					input.chatId,
 				);
 
 				if (!chat) {
@@ -727,7 +809,7 @@ export const inboxRouter = createTRPCRouter({
 				}
 
 				return await ctx.services.chatFolderService.getChatFolders(
-					input.chatId
+					input.chatId,
 				);
 			} catch (error) {
 				if (error instanceof TRPCError) {

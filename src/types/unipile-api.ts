@@ -310,6 +310,34 @@ export interface UnipileApiAccountStatus {
 	error_message?: string;
 }
 
+// Account status webhook payload from Unipile
+// Based on: https://developer.unipile.com/docs/account-lifecycle#synchronization-status
+export interface UnipileAccountStatusWebhook {
+	AccountStatus: {
+		account_id: string;
+		account_type:
+			| "LINKEDIN"
+			| "WHATSAPP"
+			| "INSTAGRAM"
+			| "MESSENGER"
+			| "TELEGRAM"
+			| "X"
+			| "GOOGLE"
+			| "MICROSOFT"
+			| "IMAP";
+		message:
+			| "OK"
+			| "ERROR"
+			| "STOPPED"
+			| "CREDENTIALS"
+			| "CONNECTING"
+			| "DELETED"
+			| "CREATION_SUCCESS"
+			| "RECONNECTED"
+			| "SYNC_SUCCESS";
+	};
+}
+
 // Profile view types from Unipile API
 export interface UnipileApiProfileView {
 	id: string;
@@ -450,36 +478,25 @@ export interface UnipileApiCursor {
 	params?: Record<string, unknown>;
 }
 
-// PATCH chat request/response types for chat actions (mark as read, mute, etc.)
+// PATCH chat request/response types for chat actions - Updated to match official API spec
 export interface UnipileApiPatchChatRequest {
 	/**
 	 * Action to perform on the chat
-	 * - "mark_as_read": Mark all messages in the chat as read
-	 * - "mark_as_unread": Mark the chat as having unread messages
-	 * - "mute": Mute the chat notifications
-	 * - "unmute": Unmute the chat notifications
-	 * - "archive": Archive the chat
-	 * - "unarchive": Unarchive the chat
+	 * Currently only "setReadStatus" is supported by the API
 	 */
-	action: "mark_as_read" | "mark_as_unread" | "mute" | "unmute" | "archive" | "unarchive";
-	
+	action: "setReadStatus";
+
 	/**
-	 * Optional value for certain actions (e.g., mute duration)
+	 * Boolean value for setReadStatus action
+	 * - true: mark as read
+	 * - false: mark as unread
 	 */
-	value?: string | number;
+	value: boolean;
 }
 
 export interface UnipileApiPatchChatResponse {
-	object: "ChatAction";
-	chat_id: string;
-	account_id: string;
-	action: string;
-	success: boolean;
-	message?: string;
-	updated_fields?: {
-		unread_count?: number;
-		archived?: number;
-		muted_until?: number;
-		read_only?: number;
-	};
+	/**
+	 * Response object type - always "ChatPatched" according to API spec
+	 */
+	object: "ChatPatched";
 }

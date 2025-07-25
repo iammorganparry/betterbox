@@ -12,6 +12,9 @@ import {
   FolderPlus,
   FolderEdit,
   Plus,
+  GripVertical,
+  X,
+  Linkedin,
 } from "lucide-react";
 import { useState } from "react";
 import { useRouter, useParams } from "next/navigation";
@@ -31,9 +34,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import {
-  useSortable,
-} from "@dnd-kit/sortable";
+import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import {
@@ -52,10 +53,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
-import { sidebarConfig } from "./config/sidebar";
 import { api } from "~/trpc/react";
+import { sidebarConfig } from "./config/sidebar";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+
+// Import APIs and utilities
+import { useConfirmation } from "~/hooks/use-confirmation";
 
 interface ChatAttendee {
   id: string;
@@ -99,9 +103,283 @@ interface GroupedChat {
   provider: string;
 }
 
+interface FolderData {
+  id: string;
+  name: string;
+  chat_count: number;
+}
+
+interface ChatFolderAssignment {
+  chat: ChatData;
+}
+
 type FilterMode = "all" | "unread" | "read";
 
-export const InboxSidebar = () => {
+const renderProviderIcon = (provider: string) => {
+  switch (provider.toLowerCase()) {
+    case "linkedin":
+      return <Linkedin className="h-4 w-4 text-blue-600" />;
+    default:
+      return <User className="h-4 w-4" />;
+  }
+};
+
+// Extracted SortableChatItem component
+interface SortableChatItemProps {
+  mail: GroupedChat;
+  selectedChatId: string | undefined;
+  chatsData: ChatData[] | undefined;
+  handleChatClick: (
+    chatId: string,
+    hasUnreadMessages: boolean
+  ) => Promise<void>;
+  markingAsReadId: string | null;
+  handleMarkAsRead: (chatId: string, chatName: string) => void;
+  foldersData: FolderData[] | undefined;
+  assignChatToFolderMutation: {
+    mutate: (input: { chatId: string; folderId: string }) => void;
+    isPending: boolean;
+  };
+  selectedFolderId: string;
+  removeChatFromFolderMutation: {
+    mutate: (input: { chatId: string; folderId: string }) => void;
+    isPending: boolean;
+  };
+  handleRemoveFromFolder: (
+    chatId: string,
+    chatName: string,
+    folderId: string
+  ) => Promise<void>;
+  deletingChatId: string | null;
+  handleSoftDeleteChat: (chatId: string, chatName: string) => void;
+}
+
+const SortableChatItem = ({
+  mail,
+  selectedChatId,
+  chatsData,
+  handleChatClick,
+  markingAsReadId,
+  handleMarkAsRead,
+  foldersData,
+  assignChatToFolderMutation,
+  selectedFolderId,
+  removeChatFromFolderMutation,
+  handleRemoveFromFolder,
+  deletingChatId,
+  handleSoftDeleteChat,
+}: SortableChatItemProps) => {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: mail.email });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const chatData = chatsData?.find((chat) => chat.id === mail.email);
+  const hasUnreadMessages = (chatData?.unread_count ?? 0) > 0;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`group flex w-full items-center border-b last:border-b-0 hover:bg-muted/50 ${
+        selectedChatId === mail.email ? "bg-muted" : ""
+      }`}
+    >
+      {/* Drag Handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="flex cursor-grab items-center px-2 py-4 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
+      >
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </div>
+
+      <button
+        type="button"
+        onClick={() => handleChatClick(mail.email, hasUnreadMessages)}
+        className="flex flex-1 flex-col items-start gap-2 whitespace-nowrap p-4 text-left text-sm leading-tight"
+      >
+        <div className="flex w-full items-center gap-3">
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={mail.avatar || undefined} alt={mail.name} />
+            <AvatarFallback className="text-xs">{mail.initials}</AvatarFallback>
+          </Avatar>
+          <div className="flex flex-1 items-center justify-between">
+            <span className="font-medium">{mail.name}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground text-xs">{mail.date}</span>
+              {hasUnreadMessages && (
+                <div className="h-2 w-2 rounded-full bg-blue-500" />
+              )}
+            </div>
+          </div>
+        </div>
+        <span className="ml-11 font-medium text-muted-foreground">
+          {mail.subject}
+        </span>
+        <span className="ml-11 line-clamp-2 w-[260px] whitespace-break-spaces text-muted-foreground text-xs">
+          {mail.teaser}
+        </span>
+      </button>
+
+      {/* Context menu for chat actions */}
+      <div className="p-2 opacity-0 transition-opacity group-hover:opacity-100">
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {hasUnreadMessages && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleMarkAsRead(mail.email, mail.name);
+                }}
+                disabled={markingAsReadId === mail.email}
+              >
+                <CheckCheck className="mr-2 h-4 w-4" />
+                {markingAsReadId === mail.email
+                  ? "Marking as read..."
+                  : "Mark as read"}
+              </DropdownMenuItem>
+            )}
+
+            {/* Folder assignment submenu */}
+            {foldersData && foldersData.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                    <Folder className="mr-2 h-4 w-4" />
+                    Add to folder
+                  </DropdownMenuItem>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="start">
+                  {foldersData.map((folder: FolderData) => (
+                    <DropdownMenuItem
+                      key={folder.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        assignChatToFolderMutation.mutate({
+                          chatId: mail.email,
+                          folderId: folder.id,
+                        });
+                      }}
+                      disabled={assignChatToFolderMutation.isPending}
+                    >
+                      <Folder className="mr-2 h-4 w-4" />
+                      {folder.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {/* Remove from folder option - only show when viewing a specific folder */}
+            {selectedFolderId !== "all" && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRemoveFromFolder(
+                    mail.email,
+                    mail.name,
+                    selectedFolderId
+                  );
+                }}
+                disabled={removeChatFromFolderMutation.isPending}
+                className="text-orange-600 focus:text-orange-600"
+              >
+                <X className="mr-2 h-4 w-4" />
+                {removeChatFromFolderMutation.isPending
+                  ? "Removing from folder..."
+                  : "Remove from folder"}
+              </DropdownMenuItem>
+            )}
+
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSoftDeleteChat(mail.email, mail.name);
+              }}
+              disabled={deletingChatId === mail.email}
+              className="text-red-600 focus:text-red-600"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {deletingChatId === mail.email
+                ? "Deleting..."
+                : "Delete conversation"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+};
+
+// Extracted DroppableFolder component
+interface DroppableFolderProps {
+  folder: { id: string; name: string; chat_count: number };
+  isSelected: boolean;
+  onClick: () => void;
+}
+
+const DroppableFolder = ({
+  folder,
+  isSelected,
+  onClick,
+}: DroppableFolderProps) => {
+  const { setNodeRef, isOver } = useSortable({ id: folder.id });
+
+  return (
+    <button
+      ref={setNodeRef}
+      onClick={onClick}
+      type="button"
+      className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+        isSelected
+          ? "bg-primary text-primary-foreground"
+          : isOver
+          ? "bg-muted/70"
+          : "hover:bg-muted/50"
+      }`}
+    >
+      <Folder className="h-4 w-4" />
+      <span className="flex-1 text-left">{folder.name}</span>
+      <span
+        className={`text-muted-foreground text-xs ${
+          isSelected ? "text-primary-foreground" : ""
+        }`}
+      >
+        {folder.chat_count}
+      </span>
+      {/* context menu for edit and delete and only show when not "all Chats" */}
+      {folder.id !== "all" ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <span className="p-1 text-muted-foreground text-xs">
+              <MoreHorizontal className="h-4 w-4" />
+            </span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem>Edit</DropdownMenuItem>
+            <DropdownMenuItem>Delete</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </button>
+  );
+};
+
+export default function InboxSidebar() {
   const [activeItem, setActiveItem] = useState(sidebarConfig[0]);
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [markingAsReadId, setMarkingAsReadId] = useState<string | null>(null);
@@ -112,6 +390,12 @@ export const InboxSidebar = () => {
   const router = useRouter();
   const params = useParams();
   const selectedChatId = params?.chatId as string;
+
+  // Initialize confirmation hook
+  const { confirm, ConfirmationDialog } = useConfirmation();
+
+  // Get TRPC utils for query invalidation
+  const utils = api.useUtils();
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -139,23 +423,48 @@ export const InboxSidebar = () => {
   } = api.inbox.getFolders.useQuery();
 
   // Get chats in selected folder
-  const {
-    data: folderChatsData,
-    isLoading: folderChatsLoading,
-  } = api.inbox.getChatsInFolder.useQuery(
-    { folderId: selectedFolderId },
-    { enabled: selectedFolderId !== "all" }
-  );
+  const { data: folderChatsData, isLoading: folderChatsLoading } =
+    api.inbox.getChatsInFolder.useQuery(
+      { folderId: selectedFolderId },
+      { enabled: selectedFolderId !== "all" }
+    );
 
-  // Mark chat as read mutation
+  // Mark chat as read mutation (with toast - for explicit context menu action)
   const markChatAsReadMutation = api.inbox.markChatAsRead.useMutation({
     onSuccess: (data) => {
+      console.log("✅ Chat marked as read successfully:", data);
       toast.success("Chat marked as read");
       // Refetch chats to update the sidebar
       void refetchChats();
     },
     onError: (error) => {
+      console.error("❌ Failed to mark chat as read:", {
+        message: error.message,
+        code: error.data?.code,
+        stack: error.data?.stack,
+        httpStatus: error.data?.httpStatus,
+        path: error.data?.path,
+      });
       toast.error(error.message || "Failed to mark chat as read");
+    },
+    onSettled: () => {
+      setMarkingAsReadId(null);
+    },
+  });
+
+  // Silent mark as read mutation (no toast - for automatic marking when opening chat)
+  const silentMarkAsReadMutation = api.inbox.markChatAsRead.useMutation({
+    onSuccess: (data) => {
+      console.log("✅ Chat silently marked as read:", data);
+      // Refetch chats to update the sidebar (no toast)
+      void refetchChats();
+    },
+    onError: (error) => {
+      console.error("❌ Failed to silently mark chat as read:", {
+        message: error.message,
+        code: error.data?.code,
+      });
+      // No toast for silent failures
     },
     onSettled: () => {
       setMarkingAsReadId(null);
@@ -196,10 +505,18 @@ export const InboxSidebar = () => {
 
   // Assign chat to folder mutation
   const assignChatToFolderMutation = api.inbox.assignChatToFolder.useMutation({
-    onSuccess: () => {
-      toast.success("Chat assigned to folder");
-      void refetchChats();
-      void refetchFolders();
+    onSuccess: (data) => {
+      // Use the message from the backend response for better UX
+      if (data.wasAlreadyInFolder) {
+        toast.info(data.message); // Use info toast for "already in folder"
+      } else {
+        toast.success(data.message); // Use success toast for new assignment
+      }
+
+      // Invalidate all relevant queries
+      void utils.inbox.getChats.invalidate();
+      void utils.inbox.getFolders.invalidate();
+      void utils.inbox.getChatsInFolder.invalidate();
     },
     onError: (error) => {
       toast.error(error.message || "Failed to assign chat to folder");
@@ -207,16 +524,19 @@ export const InboxSidebar = () => {
   });
 
   // Remove chat from folder mutation
-  const removeChatFromFolderMutation = api.inbox.removeChatFromFolder.useMutation({
-    onSuccess: () => {
-      toast.success("Chat removed from folder");
-      void refetchChats();
-      void refetchFolders();
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to remove chat from folder");
-    },
-  });
+  const removeChatFromFolderMutation =
+    api.inbox.removeChatFromFolder.useMutation({
+      onSuccess: () => {
+        toast.success("Chat removed from folder");
+        // Invalidate all relevant queries to ensure UI updates
+        void utils.inbox.getChats.invalidate();
+        void utils.inbox.getFolders.invalidate();
+        void utils.inbox.getChatsInFolder.invalidate();
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to remove chat from folder");
+      },
+    });
 
   const handleMarkAsRead = async (chatId: string, chatName: string) => {
     setMarkingAsReadId(chatId);
@@ -224,14 +544,41 @@ export const InboxSidebar = () => {
   };
 
   const handleSoftDeleteChat = async (chatId: string, chatName: string) => {
-    if (
-      window.confirm(
-        `Are you sure you want to delete the conversation with ${chatName}? This action cannot be undone.`
-      )
-    ) {
-      setDeletingChatId(chatId);
-      softDeleteChatMutation.mutate({ chatId });
-    }
+    await confirm(
+      () => {
+        setDeletingChatId(chatId);
+        softDeleteChatMutation.mutate({ chatId });
+      },
+      {
+        title: "Delete Conversation",
+        description: `Are you sure you want to delete the conversation with ${chatName}? This action cannot be undone.`,
+        confirmText: "Delete",
+        cancelText: "Cancel",
+        variant: "destructive",
+      }
+    );
+  };
+
+  const handleRemoveFromFolder = async (
+    chatId: string,
+    chatName: string,
+    folderId: string
+  ) => {
+    await confirm(
+      () => {
+        removeChatFromFolderMutation.mutate({
+          chatId,
+          folderId,
+        });
+      },
+      {
+        title: "Remove from Folder",
+        description: `Are you sure you want to remove ${chatName} from this folder?`,
+        confirmText: "Remove",
+        cancelText: "Cancel",
+        variant: "destructive",
+      }
+    );
   };
 
   const handleChatClick = async (
@@ -241,14 +588,14 @@ export const InboxSidebar = () => {
     // Navigate to the chat first for immediate response
     router.push(`/inbox/${chatId}`);
 
-    // Always mark as read if it has unread messages (more robust approach)
+    // Silently mark as read if it has unread messages (no toast)
     if (hasUnreadMessages && markingAsReadId !== chatId) {
       setMarkingAsReadId(chatId);
       try {
-        await markChatAsReadMutation.mutateAsync({ chatId });
+        await silentMarkAsReadMutation.mutateAsync({ chatId });
       } catch (error) {
         // Error handling is already in the mutation's onError
-        console.error("Failed to mark chat as read:", error);
+        console.error("Failed to silently mark chat as read:", error);
       }
     }
   };
@@ -281,9 +628,12 @@ export const InboxSidebar = () => {
   const typedChats = (chatsData as ChatData[]) || [];
 
   // Get chats to display based on folder selection
-  const chatsToDisplay: ChatData[] = selectedFolderId === "all"
-    ? typedChats
-    : (folderChatsData as any)?.map((assignment: any) => assignment.chat) || [];
+  const chatsToDisplay: ChatData[] =
+    selectedFolderId === "all"
+      ? typedChats
+      : (folderChatsData as unknown as ChatFolderAssignment[])?.map(
+          (assignment) => assignment.chat
+        ) || [];
 
   // Filter chats based on selected filter mode
   const filteredChats = chatsToDisplay.filter((chat: ChatData) => {
@@ -292,7 +642,6 @@ export const InboxSidebar = () => {
         return chat.unread_count > 0;
       case "read":
         return chat.unread_count === 0;
-      case "all":
       default:
         return true;
     }
@@ -308,8 +657,15 @@ export const InboxSidebar = () => {
     return contact && (contact.full_name || contact.first_name);
   });
 
+  // Sort chats by newest message first (most recent conversation at the top)
+  const sortedChats = chatsWithContacts.sort((a, b) => {
+    const dateA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+    const dateB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+    return dateB - dateA; // Descending order (newest first)
+  });
+
   // Convert chats to the existing mail format
-  const mails: GroupedChat[] = chatsWithContacts.map((chat) => {
+  const mails: GroupedChat[] = sortedChats.map((chat) => {
     const attendee = chat.UnipileChatAttendee?.find(
       (a: ChatAttendee) => a.is_self !== 1
     );
@@ -321,7 +677,7 @@ export const InboxSidebar = () => {
     const latestMessage = chat.UnipileMessage?.[0];
     const messageTeaser = latestMessage?.content
       ? latestMessage.content.split(" ").slice(0, 8).join(" ") +
-      (latestMessage.content.split(" ").length > 8 ? "..." : "")
+        (latestMessage.content.split(" ").length > 8 ? "..." : "")
       : "No messages yet";
 
     return {
@@ -329,33 +685,36 @@ export const InboxSidebar = () => {
       name: contactName,
       date: chat.last_message_at
         ? formatDistanceToNow(new Date(chat.last_message_at), {
-          addSuffix: true,
-        })
+            addSuffix: true,
+          })
         : "",
       subject: contact?.headline || "",
       teaser: messageTeaser,
       avatar: contact?.profile_image_url || null,
       initials: contactName
         ? contactName
-          .split(" ")
-          .map((n: string) => n[0])
-          .join("")
-          .toUpperCase()
-          .slice(0, 2)
+            .split(" ")
+            .map((n: string) => n[0])
+            .join("")
+            .toUpperCase()
+            .slice(0, 2)
         : "UC",
       provider: chat.provider,
     };
   });
 
   // Group chats by provider
-  const groupedChats = mails.reduce((groups: Record<string, GroupedChat[]>, chat: GroupedChat) => {
-    const provider = chat.provider.toUpperCase();
-    if (!groups[provider]) {
-      groups[provider] = [];
-    }
-    groups[provider].push(chat);
-    return groups;
-  }, {} as Record<string, GroupedChat[]>);
+  const groupedChats = mails.reduce(
+    (groups: Record<string, GroupedChat[]>, chat: GroupedChat) => {
+      const provider = chat.provider.toUpperCase();
+      if (!groups[provider]) {
+        groups[provider] = [];
+      }
+      groups[provider].push(chat);
+      return groups;
+    },
+    {} as Record<string, GroupedChat[]>
+  );
 
   // Sort providers alphabetically and ensure LINKEDIN comes first if it exists
   const sortedProviders = Object.keys(groupedChats).sort((a, b) => {
@@ -364,190 +723,13 @@ export const InboxSidebar = () => {
     return a.localeCompare(b);
   });
 
-  // Sortable Chat Item Component
-  const SortableChatItem = ({ mail }: { mail: GroupedChat }) => {
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      transform,
-      transition,
-    } = useSortable({ id: mail.email });
-
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition,
-    };
-
-    const chatData = chatsData?.find(
-      (chat) => chat.id === mail.email
-    );
-    const hasUnreadMessages = (chatData?.unread_count ?? 0) > 0;
-
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        {...attributes}
-        {...listeners}
-        className={`group flex w-full items-center border-b last:border-b-0 hover:bg-muted/50 ${selectedChatId === mail.email ? "bg-muted" : ""
-          }`}
-      >
-        <button
-          type="button"
-          onClick={() => handleChatClick(mail.email, hasUnreadMessages)}
-          className="flex flex-1 flex-col items-start gap-2 whitespace-nowrap p-4 text-left text-sm leading-tight"
-        >
-          <div className="flex w-full items-center gap-3">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={mail.avatar || undefined} alt={mail.name} />
-              <AvatarFallback className="text-xs">
-                {mail.initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex flex-1 items-center justify-between">
-              <span className="font-medium">{mail.name}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground text-xs">
-                  {mail.date}
-                </span>
-                {hasUnreadMessages && (
-                  <div className="h-2 w-2 rounded-full bg-blue-500" />
-                )}
-              </div>
-            </div>
-          </div>
-          <span className="ml-11 font-medium text-muted-foreground">
-            {mail.subject}
-          </span>
-          <span className="ml-11 line-clamp-2 w-[260px] whitespace-break-spaces text-muted-foreground text-xs">
-            {mail.teaser}
-          </span>
-        </button>
-
-        {/* Context menu for chat actions */}
-        <div className="p-2 opacity-0 transition-opacity group-hover:opacity-100">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {hasUnreadMessages && (
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleMarkAsRead(mail.email, mail.name);
-                  }}
-                  disabled={markingAsReadId === mail.email}
-                >
-                  <CheckCheck className="mr-2 h-4 w-4" />
-                  {markingAsReadId === mail.email
-                    ? "Marking as read..."
-                    : "Mark as read"}
-                </DropdownMenuItem>
-              )}
-
-              {/* Folder assignment submenu */}
-              {foldersData && foldersData.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <DropdownMenuItem
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Folder className="mr-2 h-4 w-4" />
-                      Add to folder
-                    </DropdownMenuItem>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="right" align="start">
-                    {foldersData.map((folder: any) => (
-                      <DropdownMenuItem
-                        key={folder.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          assignChatToFolderMutation.mutate({
-                            chatId: mail.email,
-                            folderId: folder.id,
-                          });
-                        }}
-                        disabled={assignChatToFolderMutation.isPending}
-                      >
-                        <Folder className="mr-2 h-4 w-4" />
-                        {folder.name}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSoftDeleteChat(mail.email, mail.name);
-                }}
-                disabled={deletingChatId === mail.email}
-                className="text-red-600 focus:text-red-600"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {deletingChatId === mail.email
-                  ? "Deleting..."
-                  : "Delete conversation"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-    );
-  };
-
-  // Droppable Folder Component
-  const DroppableFolder = ({
-    folder,
-    isSelected,
-    onClick
-  }: {
-    folder: { id: string; name: string; chat_count: number };
-    isSelected: boolean;
-    onClick: () => void;
-  }) => {
-    const {
-      setNodeRef,
-      isOver,
-    } = useSortable({ id: folder.id });
-
-    return (
-      <div
-        ref={setNodeRef}
-        onClick={onClick}
-        className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors ${isSelected
-          ? "bg-primary text-primary-foreground"
-          : isOver
-            ? "bg-muted/70"
-            : "hover:bg-muted/50"
-          }`}
-      >
-        <Folder className="h-4 w-4" />
-        <span className="flex-1">{folder.name}</span>
-        <span className="text-xs text-muted-foreground">
-          {folder.chat_count}
-        </span>
-      </div>
-    );
-  };
-
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex min-h-screen justify-center border-gray-200 border-r bg-white pt-8">
+      <div className="flex min-h-screen w-[450px] justify-center border-gray-200 border-r bg-white">
         <div className="w-full max-w-md">
           {/* Header */}
           <div className="p-6 pb-4">
@@ -559,8 +741,14 @@ export const InboxSidebar = () => {
                 <Label htmlFor="filter-select" className="text-sm">
                   Filter:
                 </Label>
-                <Select value={filterMode} onValueChange={(value: FilterMode) => setFilterMode(value)}>
-                  <SelectTrigger id="filter-select" className="w-24 h-8 text-xs">
+                <Select
+                  value={filterMode}
+                  onValueChange={(value: FilterMode) => setFilterMode(value)}
+                >
+                  <SelectTrigger
+                    id="filter-select"
+                    className="h-8 w-24 text-xs"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -575,8 +763,8 @@ export const InboxSidebar = () => {
           </div>
 
           {/* Folders Section */}
-          <div className="p-4 border-b">
-            <div className="flex items-center justify-between mb-3">
+          <div className="border-b p-4">
+            <div className="mb-3 flex items-center justify-between">
               <h3 className="font-medium text-sm">Folders</h3>
               <Button
                 variant="ghost"
@@ -591,19 +779,23 @@ export const InboxSidebar = () => {
             <SortableContext
               items={[
                 "all",
-                ...(foldersData?.map((f: any) => f.id) || [])
+                ...(foldersData?.map((f: FolderData) => f.id) || []),
               ]}
               strategy={verticalListSortingStrategy}
             >
               {/* All Chats folder */}
               <DroppableFolder
-                folder={{ id: "all", name: "All Chats", chat_count: typedChats.length }}
+                folder={{
+                  id: "all",
+                  name: "All Chats",
+                  chat_count: typedChats.length,
+                }}
                 isSelected={selectedFolderId === "all"}
                 onClick={() => setSelectedFolderId("all")}
               />
 
               {/* User folders */}
-              {foldersData?.map((folder: any) => (
+              {foldersData?.map((folder: FolderData) => (
                 <DroppableFolder
                   key={folder.id}
                   folder={folder}
@@ -634,9 +826,18 @@ export const InboxSidebar = () => {
                 <Button
                   size="sm"
                   onClick={handleCreateFolder}
-                  disabled={!newFolderName.trim() || createFolderMutation.isPending}
+                  disabled={
+                    !newFolderName.trim() || createFolderMutation.isPending
+                  }
                 >
                   Add
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowCreateFolder(false)}
+                >
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
             )}
@@ -652,23 +853,43 @@ export const InboxSidebar = () => {
                 {filterMode === "unread"
                   ? "No unread conversations"
                   : filterMode === "read"
-                    ? "No read conversations"
-                    : "No conversations found"}
+                  ? "No read conversations"
+                  : "No conversations found"}
               </div>
             ) : (
               <SortableContext
-                items={mails.map(mail => mail.email)}
+                items={mails.map((mail) => mail.email)}
                 strategy={verticalListSortingStrategy}
               >
                 <div className="space-y-4">
                   {sortedProviders.map((provider) => (
                     <div key={provider}>
-                      <div className="border-b bg-muted/30 px-4 py-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                      <div className="flex flex-row items-center gap-2 border-b bg-muted/30 px-4 py-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                        {renderProviderIcon(provider)}
                         {provider}
                       </div>
                       <div>
                         {groupedChats[provider]?.map((mail) => (
-                          <SortableChatItem key={mail.email} mail={mail} />
+                          <SortableChatItem
+                            key={mail.email}
+                            mail={mail}
+                            selectedChatId={selectedChatId}
+                            chatsData={chatsData}
+                            handleChatClick={handleChatClick}
+                            markingAsReadId={markingAsReadId}
+                            handleMarkAsRead={handleMarkAsRead}
+                            foldersData={foldersData}
+                            assignChatToFolderMutation={
+                              assignChatToFolderMutation
+                            }
+                            selectedFolderId={selectedFolderId}
+                            removeChatFromFolderMutation={
+                              removeChatFromFolderMutation
+                            }
+                            handleRemoveFromFolder={handleRemoveFromFolder}
+                            deletingChatId={deletingChatId}
+                            handleSoftDeleteChat={handleSoftDeleteChat}
+                          />
                         ))}
                       </div>
                     </div>
@@ -679,6 +900,9 @@ export const InboxSidebar = () => {
           </div>
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog />
     </DndContext>
   );
-};
+}

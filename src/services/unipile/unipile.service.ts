@@ -1,4 +1,5 @@
 import type { AxiosInstance } from "axios";
+import axios from "axios";
 import { createUnipileClient } from "~/lib/http";
 import type {
 	UnipileApiResponse,
@@ -211,21 +212,44 @@ export class UnipileService {
 			action: request.action,
 			accountId,
 			value: request.value,
+			url: `/chats/${chatId}?${params.toString()}`,
+			fullUrl: `${this.client.defaults.baseURL}/chats/${chatId}?${params.toString()}`,
 		});
 
-		const response = await this.client.patch<UnipileApiPatchChatResponse>(
-			`/chats/${chatId}?${params.toString()}`,
-			request,
-		);
+		try {
+			const response = await this.client.patch<UnipileApiPatchChatResponse>(
+				`/chats/${chatId}?${params.toString()}`,
+				request,
+			);
 
-		console.log("✅ Chat action response:", {
-			chatId: response.data?.chat_id,
-			action: response.data?.action,
-			success: response.data?.success,
-			updatedFields: response.data?.updated_fields,
-		});
+			console.log("✅ Chat action response:", {
+				chatId: response.data?.chat_id,
+				action: response.data?.action,
+				success: response.data?.success,
+				updatedFields: response.data?.updated_fields,
+			});
 
-		return response.data;
+			return response.data;
+		} catch (error) {
+			// Enhanced error logging for debugging
+			const axiosError = axios.isAxiosError(error) ? error : null;
+			console.error("❌ Unipile patchChat API Error:", {
+				chatId,
+				accountId,
+				request,
+				url: `/chats/${chatId}?${params.toString()}`,
+				errorType: error?.constructor?.name,
+				status: axiosError?.response?.status,
+				statusText: axiosError?.response?.statusText,
+				responseData: axiosError?.response?.data,
+				responseHeaders: axiosError?.response?.headers,
+				requestData: request,
+				message: error instanceof Error ? error.message : String(error),
+			});
+
+			// Re-throw the error so it bubbles up properly
+			throw error;
+		}
 	}
 
 	/**

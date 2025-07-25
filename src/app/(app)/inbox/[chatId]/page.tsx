@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { useState } from "react";
-import { Trash2, MoreHorizontal, CheckCheck } from "lucide-react";
+import { Trash2, MoreHorizontal } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import {
   DropdownMenu,
@@ -41,21 +41,28 @@ interface MessageData {
 export default function ChatPage() {
   const params = useParams();
   const chatId = params?.chatId as string;
-  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
-  const [markingAsRead, setMarkingAsRead] = useState(false);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(
+    null
+  );
 
   // Fetch selected chat details and messages
-  const { data: chatDetails, isLoading: chatLoading, refetch: refetchChatDetails } =
-    api.inbox.getChatDetails.useQuery(
-      { chatId: chatId || "" },
-      { enabled: !!chatId }
-    );
+  const {
+    data: chatDetails,
+    isLoading: chatLoading,
+    refetch: refetchChatDetails,
+  } = api.inbox.getChatDetails.useQuery(
+    { chatId: chatId || "" },
+    { enabled: !!chatId }
+  );
 
-  const { data: messages, isLoading: messagesLoading, refetch: refetchMessages } =
-    api.inbox.getChatMessages.useQuery(
-      { chatId: chatId || "", limit: 50 },
-      { enabled: !!chatId }
-    );
+  const {
+    data: messages,
+    isLoading: messagesLoading,
+    refetch: refetchMessages,
+  } = api.inbox.getChatMessages.useQuery(
+    { chatId: chatId || "", limit: 50 },
+    { enabled: !!chatId }
+  );
 
   // Delete message mutation
   const deleteMessageMutation = api.inbox.deleteMessage.useMutation({
@@ -72,31 +79,15 @@ export default function ChatPage() {
     },
   });
 
-  // Mark chat as read mutation
-  const markChatAsReadMutation = api.inbox.markChatAsRead.useMutation({
-    onSuccess: () => {
-      toast.success("Chat marked as read");
-      // Refetch chat details to update the UI
-      void refetchChatDetails();
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to mark chat as read");
-    },
-    onSettled: () => {
-      setMarkingAsRead(false);
-    },
-  });
-
   const handleDeleteMessage = async (messageId: string) => {
-    if (window.confirm("Are you sure you want to delete this message? This action cannot be undone.")) {
+    if (
+      window.confirm(
+        "Are you sure you want to delete this message? This action cannot be undone."
+      )
+    ) {
       setDeletingMessageId(messageId);
       deleteMessageMutation.mutate({ messageId });
     }
-  };
-
-  const handleMarkAsRead = () => {
-    setMarkingAsRead(true);
-    markChatAsReadMutation.mutate({ chatId });
   };
 
   if (!chatId) {
@@ -129,62 +120,53 @@ export default function ChatPage() {
         <div className="border-b p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {chatDetails.UnipileChatAttendee?.map((attendee: ChatAttendee) => {
-                if (attendee.is_self !== 1 && attendee.contact) {
-                  const contact = attendee.contact;
-                  const displayName =
-                    contact.full_name ||
-                    [contact.first_name, contact.last_name]
-                      .filter(Boolean)
-                      .join(" ") ||
-                    "Unknown Contact";
+              {chatDetails.UnipileChatAttendee?.map(
+                (attendee: ChatAttendee) => {
+                  if (attendee.is_self !== 1 && attendee.contact) {
+                    const contact = attendee.contact;
+                    const displayName =
+                      contact.full_name ||
+                      [contact.first_name, contact.last_name]
+                        .filter(Boolean)
+                        .join(" ") ||
+                      "Unknown Contact";
 
-                  return (
-                    <div key={attendee.id} className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage
-                          src={contact.profile_image_url || undefined}
-                          alt={displayName}
-                        />
-                        <AvatarFallback>
-                          {displayName
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .toUpperCase()
-                            .slice(0, 2)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <h2 className="font-medium text-lg">{displayName}</h2>
-                        {contact.headline && (
-                          <p className="text-sm text-muted-foreground">
-                            {contact.headline}
-                          </p>
-                        )}
+                    return (
+                      <div
+                        key={attendee.id}
+                        className="flex items-center gap-3"
+                      >
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage
+                            src={contact.profile_image_url || undefined}
+                            alt={displayName}
+                          />
+                          <AvatarFallback>
+                            {displayName
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .toUpperCase()
+                              .slice(0, 2)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h2 className="font-medium text-lg">{displayName}</h2>
+                          {contact.headline && (
+                            <p className="text-muted-foreground text-sm">
+                              {contact.headline}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
+                    );
+                  }
+                  return null;
                 }
-                return null;
-              })}
-            </div>
-
-            {/* Chat actions */}
-            <div className="flex items-center gap-2">
-              {chatDetails.unread_count > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleMarkAsRead}
-                  disabled={markingAsRead}
-                  className="flex items-center gap-2"
-                >
-                  <CheckCheck className="h-4 w-4" />
-                  {markingAsRead ? "Marking as read..." : "Mark as read"}
-                </Button>
               )}
             </div>
+
+            {/* No chat actions needed - opening chat automatically marks as read */}
           </div>
         </div>
       )}
@@ -200,15 +182,17 @@ export default function ChatPage() {
             {messages.map((message: MessageData) => (
               <div
                 key={message.id}
-                className={`group flex ${message.is_outgoing ? "justify-end" : "justify-start"
-                  }`}
+                className={`group flex ${
+                  message.is_outgoing ? "justify-end" : "justify-start"
+                }`}
               >
-                <div className="flex items-start gap-2 max-w-[70%]">
+                <div className="flex max-w-[70%] items-start gap-2">
                   <div
-                    className={`relative rounded-lg px-4 py-2 ${message.is_outgoing
-                      ? "bg-blue-500 text-white"
-                      : "bg-gray-100 text-gray-900"
-                      }`}
+                    className={`relative rounded-lg px-4 py-2 ${
+                      message.is_outgoing
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-100 text-gray-900"
+                    }`}
                   >
                     <p className="text-sm">{message.content}</p>
                     <p className="mt-1 text-xs opacity-70">
@@ -220,7 +204,7 @@ export default function ChatPage() {
 
                   {/* Delete button - only show for user's own messages */}
                   {message.is_outgoing && (
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="opacity-0 transition-opacity group-hover:opacity-100">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -240,7 +224,9 @@ export default function ChatPage() {
                             disabled={deletingMessageId === message.id}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            {deletingMessageId === message.id ? "Deleting..." : "Delete message"}
+                            {deletingMessageId === message.id
+                              ? "Deleting..."
+                              : "Delete message"}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

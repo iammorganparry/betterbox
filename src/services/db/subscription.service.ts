@@ -1,8 +1,18 @@
 import type { Prisma, PrismaClient } from "../../../generated/prisma";
 
 // Note: These types will be available after running Prisma migration
-type Subscription = any;
-type PaymentMethod = any;
+type Subscription = Prisma.SubscriptionGetPayload<{
+	include: {
+		user: true;
+		PaymentMethod: true;
+	};
+}>;
+type PaymentMethod = Prisma.PaymentMethodGetPayload<{
+	include: {
+		subscription: true;
+	};
+}>;
+
 type SubscriptionPlan =
 	| "FREE"
 	| "STARTER"
