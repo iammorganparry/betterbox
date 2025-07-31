@@ -2,6 +2,7 @@ import type {
 	Prisma,
 	PrismaClient,
 	UnipileAccount,
+	UnipileAccountStatus,
 	User,
 } from "generated/prisma";
 import { db } from "~/server/db";
@@ -140,7 +141,7 @@ export class UnipileAccountService {
 	 */
 	public async updateStatus(
 		id: string,
-		status: string,
+		status: UnipileAccountStatus,
 	): Promise<UnipileAccount> {
 		return await this.db.unipileAccount.update({
 			where: { id },

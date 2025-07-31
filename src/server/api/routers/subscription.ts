@@ -36,7 +36,7 @@ export const subscriptionRouter = createTRPCRouter({
 			});
 
 			// Update user with Stripe customer ID
-			await userService.updateUser(ctx.userId!, {
+			await userService.update(ctx.userId!, {
 				stripe_customer_id: customer.id,
 			});
 
@@ -107,10 +107,10 @@ export const subscriptionRouter = createTRPCRouter({
 					plan: input.plan,
 					stripeSubscriptionId: stripeSubscription.id,
 					currentPeriodStart: new Date(
-						stripeSubscription.current_period_start * 1000,
+						(stripeSubscription as any).current_period_start * 1000,
 					),
 					currentPeriodEnd: new Date(
-						stripeSubscription.current_period_end * 1000,
+						(stripeSubscription as any).current_period_end * 1000,
 					),
 				},
 			);
@@ -192,10 +192,10 @@ export const subscriptionRouter = createTRPCRouter({
 				{
 					plan: input.plan,
 					currentPeriodStart: new Date(
-						stripeSubscription.current_period_start * 1000,
+						(stripeSubscription as any).current_period_start * 1000,
 					),
 					currentPeriodEnd: new Date(
-						stripeSubscription.current_period_end * 1000,
+						(stripeSubscription as any).current_period_end * 1000,
 					),
 				},
 			);

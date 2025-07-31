@@ -34,10 +34,13 @@ export const inboxRouter = createTRPCRouter({
 					);
 
 				// Apply contact limits and obfuscation
+				// Type assertion: we know the chats include the required relations because
+				// we set include_attendees: true and include_messages: true
+				const chatsWithDetails = result.chats as any;
 				const filteredChats =
 					await ctx.services.contactLimitService.applyContactLimitsToChats(
 						ctx.userId,
-						result.chats,
+						chatsWithDetails,
 					);
 
 				return {
@@ -458,13 +461,11 @@ export const inboxRouter = createTRPCRouter({
 				}
 
 				// Check if Unipile operation was successful
-				if (unipileResponse.success === false) {
+				if (unipileResponse.object !== "ChatPatched") {
 					console.error("❌ Unipile API operation failed:", unipileResponse);
 					throw new TRPCError({
 						code: "BAD_GATEWAY",
-						message:
-							unipileResponse.message ||
-							"Failed to mark chat as read in Unipile",
+						message: "Failed to mark chat as read in Unipile",
 					});
 				}
 

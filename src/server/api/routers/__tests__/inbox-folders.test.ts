@@ -33,7 +33,23 @@ const mockContactLimitService = {
 // Create mock context
 const createMockContext = (userId: string | null = "user-123") => ({
 	db: {} as any,
-	auth: { userId },
+	auth: {
+		userId,
+		sessionClaims: null,
+		sessionId: userId ? "session-123" : null,
+		sessionStatus: userId ? "active" : "expired",
+		actor: null,
+		orgId: null,
+		orgRole: null,
+		orgSlug: null,
+		orgPermissions: null,
+		factorVerificationAge: null,
+		redirectToSignIn: vi.fn(),
+		redirectToSignUp: vi.fn(),
+		protect: vi.fn(),
+		has: vi.fn(),
+		debug: vi.fn(),
+	},
 	userId,
 	services: {
 		chatFolderService: mockChatFolderService,

@@ -223,10 +223,7 @@ export class UnipileService {
 			);
 
 			console.log("✅ Chat action response:", {
-				chatId: response.data?.chat_id,
-				action: response.data?.action,
-				success: response.data?.success,
-				updatedFields: response.data?.updated_fields,
+				object: response.data?.object,
 			});
 
 			return response.data;

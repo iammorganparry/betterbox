@@ -226,9 +226,9 @@ describe('inboxRouter - getChats', () => {
       const result = await caller.getChats({})
 
       // Assert
-      expect(result).toHaveLength(4)
-      expect(result.filter(chat => chat.unread_count > 0)).toHaveLength(2) // 2 unread
-      expect(result.filter(chat => chat.unread_count === 0)).toHaveLength(2) // 2 read
+      expect(result.chats).toHaveLength(4)
+      expect(result.chats.filter(chat => chat.unread_count > 0)).toHaveLength(2) // 2 unread
+      expect(result.chats.filter(chat => chat.unread_count === 0)).toHaveLength(2) // 2 read
     })
   })
 })

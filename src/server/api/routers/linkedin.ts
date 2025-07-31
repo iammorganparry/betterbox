@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { UnipileAccountStatus } from "generated/prisma";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 // Input schemas
@@ -62,7 +63,7 @@ export const linkedinRouter = createTRPCRouter({
 						result.account_id,
 						"linkedin",
 						{
-							status: result.status || "connected",
+							status: (result.status as UnipileAccountStatus) || UnipileAccountStatus.connected,
 						},
 					);
 
@@ -101,7 +102,7 @@ export const linkedinRouter = createTRPCRouter({
 						result.account_id,
 						"linkedin",
 						{
-							status: result.status || "connected",
+							status: (result.status as UnipileAccountStatus) || UnipileAccountStatus.connected,
 						},
 					);
 
@@ -143,7 +144,7 @@ export const linkedinRouter = createTRPCRouter({
 						result.account_id,
 						"linkedin",
 						{
-							status: result.status || "connected",
+							status: (result.status as UnipileAccountStatus) || UnipileAccountStatus.connected,
 						},
 					);
 

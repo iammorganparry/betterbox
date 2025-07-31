@@ -22,9 +22,12 @@ export type ChatWithMessages = Prisma.UnipileChatGetPayload<{
 
 export type ChatWithDetails = Prisma.UnipileChatGetPayload<{
 	include: {
-		UnipileChatAttendee: true;
+		UnipileChatAttendee: { include: { contact: true } };
 		UnipileMessage: {
-			include: { UnipileMessageAttachment: true };
+			include: { 
+				UnipileMessageAttachment: true;
+				unipile_account: true;
+			};
 		};
 		unipile_account: true;
 	};
@@ -51,6 +54,17 @@ export interface PaginatedChats {
 	nextCursor?: string;
 	hasMore: boolean;
 }
+
+export type PaginatedChatsWithDetails = {
+	chats: Prisma.UnipileChatGetPayload<{
+		include: {
+			UnipileChatAttendee: { include: { contact: true } };
+			UnipileMessage: { include: { unipile_account: true } };
+		};
+	}>[];
+	nextCursor?: string;
+	hasMore: boolean;
+};
 
 export class UnipileChatService {
 	constructor(private readonly db: PrismaClient) {}
@@ -143,6 +157,9 @@ export class UnipileChatService {
 								where: { is_deleted: false },
 								orderBy: { sent_at: "desc" },
 								take: 5, // Latest 5 messages
+								include: {
+									unipile_account: true,
+								},
 							},
 						}
 					: {}),
@@ -198,6 +215,9 @@ export class UnipileChatService {
 								where: { is_deleted: false },
 								orderBy: { sent_at: "desc" },
 								take: 5,
+								include: {
+									unipile_account: true,
+								},
 							},
 						}
 					: {}),
@@ -264,6 +284,9 @@ export class UnipileChatService {
 								where: { is_deleted: false },
 								orderBy: { sent_at: "desc" },
 								take: 5,
+								include: {
+									unipile_account: true,
+								},
 							},
 						}
 					: {}),
@@ -539,6 +562,7 @@ export class UnipileChatService {
 						UnipileMessageAttachment: {
 							where: { is_deleted: false },
 						},
+						unipile_account: true, // Include unipile_account for contact limit service
 					},
 					orderBy: { sent_at: "asc" },
 				},

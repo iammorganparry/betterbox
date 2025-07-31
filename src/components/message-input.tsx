@@ -39,9 +39,9 @@ export const MessageInput = ({
           content: variables.content,
           is_outgoing: true,
           is_read: true,
-          sent_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          sent_at: new Date(),
+          created_at: new Date(Date.now()),
+          updated_at: new Date(Date.now()),
           sender_id: null,
           recipient_id: null,
           message_type: "text",
@@ -62,6 +62,8 @@ export const MessageInput = ({
           metadata: null,
           unipile_account_id: "",
           chat_id: chatId,
+          is_deleted: false,
+          external_chat_id: "",
         };
 
         utils.inbox.getChatMessages.setData({ chatId }, [
