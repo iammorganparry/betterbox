@@ -1,41 +1,45 @@
-import { db } from "~/server/db";
-import type { Prisma, PrismaClient } from "../../../generated/prisma";
-import type {
-	UnipileChat,
-	UnipileChatAttendee,
-} from "../../../generated/prisma";
+import { eq, and, or, count, desc, asc, sql, getTableColumns } from 'drizzle-orm';
+import type { Database } from '~/db';
+import { 
+	unipileChats, 
+	unipileChatAttendees, 
+	unipileMessages,
+	unipileMessageAttachments,
+	unipileAccounts,
+	unipileContacts
+} from '~/db/schema';
 
-// Use Prisma's generated types
-export type CreateChatData = Prisma.UnipileChatCreateInput;
-export type UpdateChatData = Prisma.UnipileChatUpdateInput;
-export type CreateAttendeeData = Prisma.UnipileChatAttendeeCreateInput;
-export type UpdateAttendeeData = Prisma.UnipileChatAttendeeUpdateInput;
+// Use Drizzle's inferred types
+export type UnipileChat = typeof unipileChats.$inferSelect;
+export type UnipileChatAttendee = typeof unipileChatAttendees.$inferSelect;
+export type CreateChatData = typeof unipileChats.$inferInsert;
+export type UpdateChatData = Partial<CreateChatData>;
+export type CreateAttendeeData = typeof unipileChatAttendees.$inferInsert;
+export type UpdateAttendeeData = Partial<CreateAttendeeData>;
 
 // Chat with various include options
-export type ChatWithAttendees = Prisma.UnipileChatGetPayload<{
-	include: { UnipileChatAttendee: true };
-}>;
+export type ChatWithAttendees = UnipileChat & {
+	UnipileChatAttendee: UnipileChatAttendee[];
+};
 
-export type ChatWithMessages = Prisma.UnipileChatGetPayload<{
-	include: { UnipileMessage: true };
-}>;
+export type ChatWithMessages = UnipileChat & {
+	UnipileMessage: (typeof unipileMessages.$inferSelect)[];
+};
 
-export type ChatWithDetails = Prisma.UnipileChatGetPayload<{
-	include: {
-		UnipileChatAttendee: { include: { contact: true } };
-		UnipileMessage: {
-			include: { 
-				UnipileMessageAttachment: true;
-				unipile_account: true;
-			};
-		};
-		unipile_account: true;
-	};
-}>;
+export type ChatWithDetails = UnipileChat & {
+	UnipileChatAttendee: (UnipileChatAttendee & {
+		contact: typeof unipileContacts.$inferSelect | null;
+	})[];
+	UnipileMessage: ((typeof unipileMessages.$inferSelect) & {
+		UnipileMessageAttachment: (typeof unipileMessageAttachments.$inferSelect)[];
+		unipile_account: typeof unipileAccounts.$inferSelect | null;
+	})[];
+	unipile_account: typeof unipileAccounts.$inferSelect;
+};
 
-export type AttendeeWithChat = Prisma.UnipileChatAttendeeGetPayload<{
-	include: { chat: true };
-}>;
+export type AttendeeWithChat = UnipileChatAttendee & {
+	chat: UnipileChat;
+};
 
 export interface FindChatOptions {
 	include_attendees?: boolean;
@@ -56,18 +60,13 @@ export interface PaginatedChats {
 }
 
 export type PaginatedChatsWithDetails = {
-	chats: Prisma.UnipileChatGetPayload<{
-		include: {
-			UnipileChatAttendee: { include: { contact: true } };
-			UnipileMessage: { include: { unipile_account: true } };
-		};
-	}>[];
+	chats: ChatWithDetails[];
 	nextCursor?: string;
 	hasMore: boolean;
 };
 
 export class UnipileChatService {
-	constructor(private readonly db: PrismaClient) {}
+	constructor(private readonly db: Database) {}
 
 	/**
 	 * Find chat by external ID
@@ -77,13 +76,22 @@ export class UnipileChatService {
 		externalId: string,
 		includeDeleted = false,
 	): Promise<UnipileChat | null> {
-		return await this.db.unipileChat.findFirst({
-			where: {
-				unipile_account_id: unipileAccountId,
-				external_id: externalId,
-				...(includeDeleted ? {} : { is_deleted: false }),
-			},
-		});
+		const whereConditions = [
+			eq(unipileChats.unipileAccountId, unipileAccountId),
+			eq(unipileChats.externalId, externalId),
+		];
+
+		if (!includeDeleted) {
+			whereConditions.push(eq(unipileChats.isDeleted, false));
+		}
+
+		const result = await this.db
+			.select()
+			.from(unipileChats)
+			.where(and(...whereConditions))
+			.limit(1);
+
+		return result[0] || null;
 	}
 
 	/**
@@ -93,29 +101,32 @@ export class UnipileChatService {
 		unipileAccountId: string,
 		externalId: string,
 		updateData: Partial<UpdateChatData>,
-		createData?: Partial<Prisma.UnipileChatCreateWithoutUnipile_accountInput>,
+		createData?: Partial<CreateChatData>,
 	): Promise<UnipileChat> {
-		return await this.db.unipileChat.upsert({
-			where: {
-				unipile_account_id_external_id: {
-					unipile_account_id: unipileAccountId,
-					external_id: externalId,
+		const insertData: CreateChatData = {
+			unipileAccountId,
+			externalId,
+			provider: "linkedin",
+			chatType: "direct",
+			isDeleted: false,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			...createData,
+		};
+
+		const result = await this.db
+			.insert(unipileChats)
+			.values(insertData)
+			.onConflictDoUpdate({
+				target: [unipileChats.unipileAccountId, unipileChats.externalId],
+				set: {
+					...updateData,
+					updatedAt: new Date(),
 				},
-			},
-			update: {
-				...updateData,
-				updated_at: new Date(),
-			},
-			create: {
-				unipile_account: {
-					connect: { id: unipileAccountId },
-				},
-				external_id: externalId,
-				provider: "linkedin",
-				chat_type: "direct",
-				...createData,
-			},
-		});
+			})
+			.returning();
+
+		return result[0]!;
 	}
 
 	/**
@@ -317,13 +328,16 @@ export class UnipileChatService {
 		chatId: string,
 		lastMessageAt: Date,
 	): Promise<UnipileChat> {
-		return await this.db.unipileChat.update({
-			where: { id: chatId },
-			data: {
-				last_message_at: lastMessageAt,
-				updated_at: new Date(),
-			},
-		});
+		const result = await this.db
+			.update(unipileChats)
+			.set({
+				lastMessageAt,
+				updatedAt: new Date(),
+			})
+			.where(eq(unipileChats.id, chatId))
+			.returning();
+
+		return result[0]!;
 	}
 
 	/**
@@ -334,13 +348,22 @@ export class UnipileChatService {
 		externalId: string,
 		includeDeleted = false,
 	): Promise<UnipileChatAttendee | null> {
-		return await this.db.unipileChatAttendee.findFirst({
-			where: {
-				chat_id: chatId,
-				external_id: externalId,
-				...(includeDeleted ? {} : { is_deleted: false }),
-			},
-		});
+		const whereConditions = [
+			eq(unipileChatAttendees.chatId, chatId),
+			eq(unipileChatAttendees.externalId, externalId),
+		];
+
+		if (!includeDeleted) {
+			whereConditions.push(eq(unipileChatAttendees.isDeleted, false));
+		}
+
+		const result = await this.db
+			.select()
+			.from(unipileChatAttendees)
+			.where(and(...whereConditions))
+			.limit(1);
+
+		return result[0] || null;
 	}
 
 	/**
@@ -355,37 +378,32 @@ export class UnipileChatService {
 			hidden?: number;
 		},
 	): Promise<UnipileChatAttendee> {
-		return await this.db.unipileChatAttendee.upsert({
-			where: {
-				chat_id_external_id: {
-					chat_id: chatId,
-					external_id: externalId,
+		const insertData: CreateAttendeeData = {
+			chatId,
+			contactId,
+			externalId,
+			isSelf: attendeeData.is_self ?? 0,
+			hidden: attendeeData.hidden ?? 0,
+			isDeleted: false,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		};
+
+		const result = await this.db
+			.insert(unipileChatAttendees)
+			.values(insertData)
+			.onConflictDoUpdate({
+				target: [unipileChatAttendees.chatId, unipileChatAttendees.externalId],
+				set: {
+					contactId,
+					isSelf: attendeeData.is_self ?? 0,
+					hidden: attendeeData.hidden ?? 0,
+					updatedAt: new Date(),
 				},
-			},
-			update: {
-				...(contactId
-					? { contact: { connect: { id: contactId } } }
-					: { contact: { disconnect: true } }),
-				is_self: attendeeData.is_self ?? 0,
-				hidden: attendeeData.hidden ?? 0,
-				updated_at: new Date(),
-			},
-			create: {
-				chat: {
-					connect: { id: chatId },
-				},
-				...(contactId
-					? {
-							contact: {
-								connect: { id: contactId },
-							},
-						}
-					: {}),
-				external_id: externalId,
-				is_self: attendeeData.is_self ?? 0,
-				hidden: attendeeData.hidden ?? 0,
-			},
-		});
+			})
+			.returning();
+
+		return result[0]!;
 	}
 
 	/**
@@ -395,38 +413,48 @@ export class UnipileChatService {
 		chatId: string,
 		includeDeleted = false,
 	): Promise<UnipileChatAttendee[]> {
-		return await this.db.unipileChatAttendee.findMany({
-			where: {
-				chat_id: chatId,
-				...(includeDeleted ? {} : { is_deleted: false }),
-			},
-			orderBy: { created_at: "asc" },
-		});
+		const whereConditions = [eq(unipileChatAttendees.chatId, chatId)];
+
+		if (!includeDeleted) {
+			whereConditions.push(eq(unipileChatAttendees.isDeleted, false));
+		}
+
+		return await this.db
+			.select()
+			.from(unipileChatAttendees)
+			.where(and(...whereConditions))
+			.orderBy(asc(unipileChatAttendees.createdAt));
 	}
 
 	/**
 	 * Get attendee count for a chat
 	 */
 	async getAttendeeCount(chatId: string): Promise<number> {
-		return await this.db.unipileChatAttendee.count({
-			where: {
-				chat_id: chatId,
-				is_deleted: false,
-			},
-		});
+		const result = await this.db
+			.select({ count: count() })
+			.from(unipileChatAttendees)
+			.where(and(
+				eq(unipileChatAttendees.chatId, chatId),
+				eq(unipileChatAttendees.isDeleted, false)
+			));
+
+		return result[0]?.count || 0;
 	}
 
 	/**
 	 * Mark chat as deleted (soft delete)
 	 */
 	async markChatAsDeleted(chatId: string): Promise<UnipileChat> {
-		return await this.db.unipileChat.update({
-			where: { id: chatId },
-			data: {
-				is_deleted: true,
-				updated_at: new Date(),
-			},
-		});
+		const result = await this.db
+			.update(unipileChats)
+			.set({
+				isDeleted: true,
+				updatedAt: new Date(),
+			})
+			.where(eq(unipileChats.id, chatId))
+			.returning();
+
+		return result[0]!;
 	}
 
 	/**

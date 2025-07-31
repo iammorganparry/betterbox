@@ -17,6 +17,8 @@ import {
 
 // Create an API that serves all sync functions
 export const { GET, POST, PUT } = serve({
+	streaming: "allow",
+	signingKey: process.env.INNGEST_SIGNING_KEY,
 	client: inngest,
 	functions: [
 		// Clerk sync functions

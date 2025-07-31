@@ -1,16 +1,14 @@
-import type { Prisma } from "generated/prisma";
+import { unipileAccounts, users, unipileAccountStatusEnum } from '~/db/schema';
 
-export type UnipileAccount = Prisma.UnipileAccountGetPayload<true>;
+export type UnipileAccount = typeof unipileAccounts.$inferSelect;
 
-export type UnipileAccountWithUser = Prisma.UnipileAccountGetPayload<{
-	include: {
-		user: true;
-	};
-}>;
+export type UnipileAccountWithUser = UnipileAccount & {
+	user: typeof users.$inferSelect;
+};
 
-export type UnipileAccountCreateInput = Prisma.UnipileAccountCreateInput;
+export type UnipileAccountCreateInput = typeof unipileAccounts.$inferInsert;
 
-export type UnipileAccountUpdateInput = Prisma.UnipileAccountUpdateInput;
+export type UnipileAccountUpdateInput = Partial<UnipileAccountCreateInput>;
 
 export type UnipileProvider =
 	| "linkedin"
@@ -19,8 +17,5 @@ export type UnipileProvider =
 	| "instagram"
 	| "messenger"
 	| "twitter";
-export type UnipileAccountStatus =
-	| "connected"
-	| "disconnected"
-	| "error"
-	| "pending";
+
+export type UnipileAccountStatus = typeof unipileAccountStatusEnum.enumValues[number];

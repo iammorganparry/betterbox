@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { UnipileAccountStatus } from "generated/prisma";
+import { unipileAccountStatusEnum } from "~/db/schema";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+
+type UnipileAccountStatus = typeof unipileAccountStatusEnum.enumValues[number];
 
 // Input schemas
 const credentialsAuthSchema = z.object({
@@ -63,7 +65,7 @@ export const linkedinRouter = createTRPCRouter({
 						result.account_id,
 						"linkedin",
 						{
-							status: (result.status as UnipileAccountStatus) || UnipileAccountStatus.connected,
+							status: (result.status as UnipileAccountStatus) || "connected",
 						},
 					);
 
@@ -102,7 +104,7 @@ export const linkedinRouter = createTRPCRouter({
 						result.account_id,
 						"linkedin",
 						{
-							status: (result.status as UnipileAccountStatus) || UnipileAccountStatus.connected,
+							status: (result.status as UnipileAccountStatus) || "connected",
 						},
 					);
 
@@ -144,7 +146,7 @@ export const linkedinRouter = createTRPCRouter({
 						result.account_id,
 						"linkedin",
 						{
-							status: (result.status as UnipileAccountStatus) || UnipileAccountStatus.connected,
+							status: (result.status as UnipileAccountStatus) || "connected",
 						},
 					);
 
@@ -180,7 +182,7 @@ export const linkedinRouter = createTRPCRouter({
 						"linkedin",
 					);
 				const account = accounts.find(
-					(acc) => acc.account_id === input.accountId && !acc.is_deleted,
+					(acc) => acc.accountId === input.accountId && !acc.isDeleted,
 				);
 
 				if (!account) {

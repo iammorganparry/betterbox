@@ -1,4 +1,4 @@
-import type { PrismaClient } from "generated/prisma";
+import type { Database } from "~/db";
 import { db } from "~/server/db";
 import { UserService } from "~/services/db/user.service";
 import { UnipileAccountService } from "~/services/db/unipile-account.service";
@@ -14,7 +14,7 @@ import { InngestMiddleware } from "inngest";
  * Services that will be injected into Inngest functions
  */
 export interface Services {
-	db: PrismaClient;
+	db: Database;
 	userService: UserService;
 	unipileAccountService: UnipileAccountService;
 	unipileChatService: UnipileChatService;
@@ -28,7 +28,7 @@ export interface Services {
 /**
  * Initialize services with database dependency injection
  */
-function createServices(database: PrismaClient): Services {
+function createServices(database: Database): Services {
 	return {
 		db: database,
 		userService: new UserService(database),
@@ -63,7 +63,7 @@ function createServices(database: PrismaClient): Services {
  * ```
  */
 
-export function servicesMiddleware(options: { db?: PrismaClient } = {}) {
+export function servicesMiddleware(options: { db?: Database } = {}) {
 	const database = options.db || db;
 	const services = createServices(database);
 

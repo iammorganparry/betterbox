@@ -1,41 +1,41 @@
-import type { Prisma, PrismaClient } from "../../../generated/prisma";
-import type { User } from "../../../generated/prisma";
+import { eq } from 'drizzle-orm';
+import type { Database } from '~/db';
+import { users } from '~/db/schema';
+
+export type User = typeof users.$inferSelect;
+export type CreateUserData = typeof users.$inferInsert;
+export type UpdateUserData = Partial<CreateUserData>;
 
 export class UserService {
-	constructor(private readonly db: PrismaClient) {}
+	constructor(private readonly db: Database) {}
 
 	async findById(id: string): Promise<User | null> {
-		return await this.db.user.findUnique({
-			where: { id },
-		});
+		const result = await this.db.select().from(users).where(eq(users.id, id)).limit(1);
+		return result[0] || null;
 	}
 
 	async findByClerkId(clerkId: string): Promise<User | null> {
-		return await this.db.user.findUnique({
-			where: { id: clerkId },
-		});
+		const result = await this.db.select().from(users).where(eq(users.id, clerkId)).limit(1);
+		return result[0] || null;
 	}
 
 	async findByEmail(email: string): Promise<User | null> {
-		return await this.db.user.findUnique({
-			where: { email },
-		});
+		const result = await this.db.select().from(users).where(eq(users.email, email)).limit(1);
+		return result[0] || null;
 	}
 
-	async create(data: Prisma.UserCreateInput): Promise<User> {
-		return await this.db.user.create({ data });
+	async create(data: CreateUserData): Promise<User> {
+		const result = await this.db.insert(users).values(data).returning();
+		return result[0]!;
 	}
 
-	async update(id: string, data: Prisma.UserUpdateInput): Promise<User> {
-		return await this.db.user.update({
-			where: { id },
-			data,
-		});
+	async update(id: string, data: UpdateUserData): Promise<User> {
+		const result = await this.db.update(users).set(data).where(eq(users.id, id)).returning();
+		return result[0]!;
 	}
 
 	async delete(id: string): Promise<User> {
-		return await this.db.user.delete({
-			where: { id },
-		});
+		const result = await this.db.delete(users).where(eq(users.id, id)).returning();
+		return result[0]!;
 	}
 }

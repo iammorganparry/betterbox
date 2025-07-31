@@ -1,13 +1,11 @@
-import type { Prisma } from "generated/prisma";
+import { users, unipileAccounts } from '~/db/schema';
 
-export type User = Prisma.UserGetPayload<true>;
+export type User = typeof users.$inferSelect;
 
-export type UserWithUnipileAccounts = Prisma.UserGetPayload<{
-	include: {
-		UnipileAccount: true;
-	};
-}>;
+export type UserWithUnipileAccounts = User & {
+	UnipileAccount: (typeof unipileAccounts.$inferSelect)[];
+};
 
-export type UserCreateInput = Prisma.UserCreateInput;
+export type UserCreateInput = typeof users.$inferInsert;
 
-export type UserUpdateInput = Prisma.UserUpdateInput;
+export type UserUpdateInput = Partial<UserCreateInput>;
