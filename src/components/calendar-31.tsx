@@ -1,12 +1,25 @@
 "use client"
 
 import * as React from "react"
-import { formatDateRange } from "little-date"
+import dayjs from "dayjs"
 import { PlusIcon } from "lucide-react"
 
 import { Button } from "~/components/ui/button"
 import { Calendar } from "~/components/ui/calendar"
 import { Card, CardContent, CardFooter } from "~/components/ui/card"
+
+const formatDateRange = (from: Date, to: Date): string => {
+  const fromDayjs = dayjs(from)
+  const toDayjs = dayjs(to)
+
+  // If same day, show "HH:MM - HH:MM"
+  if (fromDayjs.format('YYYY-MM-DD') === toDayjs.format('YYYY-MM-DD')) {
+    return `${fromDayjs.format('HH:mm')} - ${toDayjs.format('HH:mm')}`
+  }
+
+  // If different days, show "MMM DD, HH:MM - MMM DD, HH:MM"
+  return `${fromDayjs.format('MMM DD, HH:mm')} - ${toDayjs.format('MMM DD, HH:mm')}`
+}
 
 const events = [
   {
