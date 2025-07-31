@@ -1,5 +1,8 @@
 import type { Prisma, PrismaClient } from "../../../generated/prisma";
-import { getContactLimitForPlan, type SubscriptionPlan } from "~/config/contact-limits.config";
+import {
+	getContactLimitForPlan,
+	type SubscriptionPlan,
+} from "~/config/contact-limits.config";
 
 export interface ContactLimitStatus {
 	limit: number;
@@ -24,7 +27,7 @@ export class ContactLimitService {
 	 */
 	async countUserContacts(userId: string): Promise<number> {
 		// Get all contacts that have either:
-		// 1. Sent messages to the user 
+		// 1. Sent messages to the user
 		// 2. Viewed the user's profile
 		const [contactsFromMessages, contactsFromViews] = await Promise.all([
 			// Count unique contacts from incoming messages
@@ -39,7 +42,7 @@ export class ContactLimitService {
 				  AND um.is_deleted = false
 				  AND um.is_outgoing = false
 			`,
-			
+
 			// Count unique contacts from profile views
 			this.db.$queryRaw<[{ count: number }]>`
 				SELECT COUNT(DISTINCT viewer_profile_id)::int as count
@@ -47,7 +50,7 @@ export class ContactLimitService {
 				WHERE user_id = ${userId}
 				  AND viewer_profile_id IS NOT NULL
 				  AND is_deleted = false
-			`
+			`,
 		]);
 
 		// Use a UNION to get the total unique count across both sources
@@ -86,10 +89,10 @@ export class ContactLimitService {
 		// Get user's subscription plan
 		const subscription = await this.db.subscription.findUnique({
 			where: { user_id: userId },
-			select: { plan: true, status: true }
+			select: { plan: true, status: true },
 		});
 
-		const plan = subscription?.plan || 'FREE';
+		const plan = subscription?.plan || "FREE";
 		const limit = this.getContactLimit(plan as SubscriptionPlan);
 		const count = await this.countUserContacts(userId);
 
@@ -97,7 +100,7 @@ export class ContactLimitService {
 			limit,
 			count,
 			isExceeded: count > limit,
-			remainingContacts: Math.max(0, limit - count)
+			remainingContacts: Math.max(0, limit - count),
 		};
 	}
 
@@ -112,7 +115,21 @@ export class ContactLimitService {
 	/**
 	 * Obfuscate chat data when contact limit is exceeded
 	 */
-	obfuscateChat(chat: any, contactIndex: number, limit: number): any {
+	obfuscateChat(
+		chat: Prisma.UnipileChatGetPayload<{
+			include: {
+				UnipileChatAttendee: { include: { contact: true } };
+				UnipileMessage: { include: { unipile_account: true } };
+			};
+		}>,
+		contactIndex: number,
+		limit: number,
+	): Prisma.UnipileChatGetPayload<{
+		include: {
+			UnipileChatAttendee: { include: { contact: true } };
+			UnipileMessage: { include: { unipile_account: true } };
+		};
+	}> {
 		if (contactIndex <= limit) {
 			return chat; // Return original chat if within limit
 		}
@@ -121,62 +138,105 @@ export class ContactLimitService {
 		return {
 			...chat,
 			name: "Premium Contact",
-			UnipileChatAttendee: chat.UnipileChatAttendee?.map((attendee: any) => ({
+			UnipileChatAttendee: chat.UnipileChatAttendee?.map((attendee) => ({
 				...attendee,
-				contact: attendee.contact ? {
-					...attendee.contact,
-					full_name: "Premium Contact",
-					first_name: "Premium",
-					last_name: "Contact", 
-					headline: "Upgrade to view this contact",
-					profile_image_url: null,
-					provider_url: null,
-					occupation: null,
-					location: null
-				} : attendee.contact
+				contact: attendee.contact
+					? {
+							...attendee.contact,
+							full_name: "Premium Contact",
+							first_name: "Premium",
+							last_name: "Contact",
+							headline: "Upgrade to view this contact",
+							profile_image_url: null,
+							provider_url: null,
+							occupation: null,
+							location: null,
+						}
+					: attendee.contact,
 			})),
 			// Obfuscate recent messages
-			UnipileMessage: chat.UnipileMessage?.map((message: any) => ({
+			UnipileMessage: chat.UnipileMessage?.map((message) => ({
 				...message,
 				content: "Upgrade to view messages from premium contacts",
-				sender_urn: null
-			}))
+				sender_urn: null,
+			})),
 		};
 	}
 
 	/**
 	 * Apply contact limits to a list of chats
+	 * Strategy: Show established (older) contacts, obfuscate newest contacts to create FOMO
 	 */
-	async applyContactLimitsToChats(userId: string, chats: any[]): Promise<any[]> {
+	async applyContactLimitsToChats(
+		userId: string,
+		chats: Prisma.UnipileChatGetPayload<{
+			include: {
+				UnipileChatAttendee: { include: { contact: true } };
+				UnipileMessage: { include: { unipile_account: true } };
+			};
+		}>[],
+	): Promise<
+		Prisma.UnipileChatGetPayload<{
+			include: { UnipileChatAttendee: { include: { contact: true } } };
+		}>[]
+	> {
 		const limitStatus = await this.getContactLimitStatus(userId);
-		
+
 		if (!limitStatus.isExceeded) {
 			return chats; // Return original chats if within limit
 		}
 
-		// Sort chats by last message time to prioritize recent contacts
-		const sortedChats = [...chats].sort((a, b) => {
-			const aTime = new Date(a.last_message_at || 0).getTime();
-			const bTime = new Date(b.last_message_at || 0).getTime();
-			return bTime - aTime; // Most recent first
-		});
+		// Group chats by contact and find the most recent message time for each contact
+		const contactToLatestTime = new Map<string, number>();
+		const contactToChats = new Map<
+			string,
+			Prisma.UnipileChatGetPayload<{
+				include: { UnipileChatAttendee: { include: { contact: true } } };
+			}>[]
+		>();
 
-		// Track unique contacts and apply obfuscation
-		const seenContacts = new Set<string>();
-		let contactCount = 0;
-
-		return sortedChats.map(chat => {
-			// Get the contact identifier from the chat
+		for (const chat of chats) {
 			const contactId = this.getChatContactId(chat);
-			
-			if (contactId && !seenContacts.has(contactId)) {
-				seenContacts.add(contactId);
-				contactCount++;
+			const messageTime = new Date(chat.last_message_at || 0).getTime();
+
+			if (!contactId) {
+				continue;
 			}
 
-			// Apply obfuscation if this contact exceeds the limit
-			if (contactCount > limitStatus.limit) {
-				return this.obfuscateChat(chat, contactCount, limitStatus.limit);
+			// Track the latest message time for this contact
+			const currentLatest = contactToLatestTime.get(contactId) || 0;
+
+			// Always track contacts, even with zero timestamps (>= instead of >)
+			if (messageTime >= currentLatest) {
+				contactToLatestTime.set(contactId, messageTime);
+			}
+
+			// Group chats by contact
+			if (!contactToChats.has(contactId)) {
+				contactToChats.set(contactId, []);
+			}
+			contactToChats.get(contactId)?.push(chat);
+		}
+
+		// Sort contacts by their latest message time (oldest conversations first)
+		// This means we'll show established relationships and obfuscate new exciting contacts
+		const sortedContacts = Array.from(contactToLatestTime.entries())
+			.sort((a, b) => a[1] - b[1]) // Oldest first (ascending by timestamp)
+			.map(([contactId]) => contactId);
+
+		// Determine which contacts should be obfuscated (the newest ones that exceed limit)
+		const obfuscatedContacts = new Set(
+			sortedContacts.slice(limitStatus.limit), // Take contacts beyond the limit
+		);
+
+		// Apply obfuscation to chats from obfuscated contacts
+		return chats.map((chat) => {
+			const contactId = this.getChatContactId(chat);
+
+			if (contactId && obfuscatedContacts.has(contactId)) {
+				// Calculate the contact's position for obfuscation message
+				const contactPosition = sortedContacts.indexOf(contactId) + 1;
+				return this.obfuscateChat(chat, contactPosition, limitStatus.limit);
 			}
 
 			return chat;
@@ -186,12 +246,22 @@ export class ContactLimitService {
 	/**
 	 * Get the primary contact ID from a chat
 	 */
-	private getChatContactId(chat: any): string | null {
+	private getChatContactId(
+		chat: Prisma.UnipileChatGetPayload<{
+			include: {
+				UnipileChatAttendee: { include: { contact: true } };
+			};
+		}>,
+	): string | null {
 		// For direct chats, get the non-self attendee
 		const nonSelfAttendee = chat.UnipileChatAttendee?.find(
-			(attendee: any) => attendee.is_self === 0
+			(attendee) => attendee.is_self === 0,
 		);
-		
-		return nonSelfAttendee?.contact?.external_id || nonSelfAttendee?.external_id || null;
+
+		return (
+			nonSelfAttendee?.contact?.external_id ||
+			nonSelfAttendee?.external_id ||
+			null
+		);
 	}
-} 
+}

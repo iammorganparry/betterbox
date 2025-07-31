@@ -41,8 +41,15 @@ export interface FindChatOptions {
 	include_deleted?: boolean;
 	limit?: number;
 	offset?: number;
+	cursor?: string; // Chat ID to start pagination from
 	order_by?: "created_at" | "updated_at" | "last_message_at";
 	order_direction?: "asc" | "desc";
+}
+
+export interface PaginatedChats {
+	chats: UnipileChat[];
+	nextCursor?: string;
+	hasMore: boolean;
 }
 
 export class UnipileChatService {
@@ -200,6 +207,84 @@ export class UnipileChatService {
 			...(limit ? { take: limit } : {}),
 			...(offset ? { skip: offset } : {}),
 		});
+	}
+
+	/**
+	 * Get chats for a user with cursor-based pagination for infinite scrolling
+	 */
+	async getChatsByUserPaginated(
+		userId: string,
+		provider?: string,
+		options: FindChatOptions = {},
+	): Promise<PaginatedChats> {
+		const {
+			include_attendees = false,
+			include_messages = false,
+			include_account = false,
+			include_deleted = false,
+			limit = 20,
+			cursor,
+			order_by = "last_message_at",
+			order_direction = "desc",
+		} = options;
+
+		// Build cursor condition for pagination
+		const cursorCondition = cursor
+			? {
+					id: {
+						lt: cursor, // Use 'lt' for descending order, 'gt' for ascending
+					},
+				}
+			: {};
+
+		const chats = await this.db.unipileChat.findMany({
+			where: {
+				unipile_account: {
+					user_id: userId,
+					...(provider ? { provider } : {}),
+					is_deleted: false,
+				},
+				...(include_deleted ? {} : { is_deleted: false }),
+				...cursorCondition,
+			},
+			include: {
+				...(include_attendees
+					? {
+							UnipileChatAttendee: {
+								where: { is_deleted: false },
+								include: {
+									contact: true,
+								},
+							},
+						}
+					: {}),
+				...(include_messages
+					? {
+							UnipileMessage: {
+								where: { is_deleted: false },
+								orderBy: { sent_at: "desc" },
+								take: 5,
+							},
+						}
+					: {}),
+				...(include_account ? { unipile_account: true } : {}),
+			},
+			orderBy: { [order_by]: order_direction },
+			take: limit + 1, // Fetch one extra to determine if there are more
+		});
+
+		// Determine if there are more results
+		const hasMore = chats.length > limit;
+		const resultChats = hasMore ? chats.slice(0, -1) : chats;
+		const nextCursor = hasMore
+			? resultChats[resultChats.length - 1]?.id
+			: undefined;
+
+		return {
+			chats: resultChats,
+			nextCursor,
+			hasMore,
+		};
 	}
 
 	/**
