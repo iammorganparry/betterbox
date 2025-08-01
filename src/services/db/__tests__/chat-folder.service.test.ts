@@ -1,31 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ChatFolderService } from "../chat-folder.service";
-import type { PrismaClient } from "../../../../generated/prisma";
+import {
+	createMockDrizzleDb,
+	createMockSelectQueryBuilder,
+	createMockInsertQueryBuilder,
+	createMockUpdateQueryBuilder,
+	mockDrizzleData,
+	type MockDrizzleDb,
+} from "../../../test/mocks/drizzle";
 
-// Mock Prisma client
-const mockPrismaClient = {
-	chatFolder: {
-		create: vi.fn(),
-		findMany: vi.fn(),
-		findFirst: vi.fn(),
-		update: vi.fn(),
-	},
-	chatFolderAssignment: {
-		create: vi.fn(),
-		findFirst: vi.fn(),
-		update: vi.fn(),
-		updateMany: vi.fn(),
-		findMany: vi.fn(),
-		createMany: vi.fn(),
-	},
-} as unknown as PrismaClient;
+// Create mock Drizzle DB
+let mockDb: MockDrizzleDb;
 
 describe("ChatFolderService - Folder Management", () => {
 	let chatFolderService: ChatFolderService;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		chatFolderService = new ChatFolderService(mockPrismaClient);
+		mockDb = createMockDrizzleDb();
+		chatFolderService = new ChatFolderService(mockDb);
 	});
 
 	describe("createFolder", () => {
@@ -49,22 +42,22 @@ describe("ChatFolderService - Folder Management", () => {
 				updated_at: new Date(),
 			};
 
-			mockPrismaClient.chatFolder.create = vi
-				.fn()
-				.mockResolvedValue(expectedFolder);
+			// Mock Drizzle insert
+			const insertBuilder = createMockInsertQueryBuilder();
+			insertBuilder.then = vi.fn((resolve) => resolve([expectedFolder]));
+			mockDb.insert = vi.fn(() => insertBuilder);
 
 			// Act
 			const result = await chatFolderService.createFolder(userId, folderData);
 
 			// Assert
-			expect(mockPrismaClient.chatFolder.create).toHaveBeenCalledWith({
-				data: {
-					user_id: userId,
-					name: "Work Chats",
-					color: "#3b82f6",
-					sort_order: 1,
-					is_default: false,
-				},
+			expect(mockDb.insert).toHaveBeenCalled();
+			expect(insertBuilder.values).toHaveBeenCalledWith({
+				user_id: userId,
+				name: "Work Chats",
+				color: "#3b82f6",
+				sort_order: 1,
+				is_default: false,
 			});
 			expect(result).toEqual(expectedFolder);
 		});

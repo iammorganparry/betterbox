@@ -1,4 +1,13 @@
-import type { Prisma, PrismaClient } from "../../../generated/prisma";
+import { sql, eq } from "drizzle-orm";
+import type { db } from "~/db";
+import {
+	subscriptions,
+	type unipileChats,
+	type unipileChatAttendees,
+	type unipileContacts,
+	type unipileMessages,
+	type unipileAccounts,
+} from "~/db/schema";
 import {
 	getContactLimitForPlan,
 	type SubscriptionPlan,
@@ -11,8 +20,18 @@ export interface ContactLimitStatus {
 	remainingContacts: number;
 }
 
+// Drizzle-based types for chat with includes
+export type ChatWithDetails = typeof unipileChats.$inferSelect & {
+	UnipileChatAttendee: (typeof unipileChatAttendees.$inferSelect & {
+		contact: typeof unipileContacts.$inferSelect | null;
+	})[];
+	UnipileMessage: (typeof unipileMessages.$inferSelect & {
+		unipile_account: typeof unipileAccounts.$inferSelect | null;
+	})[];
+};
+
 export class ContactLimitService {
-	constructor(private db: PrismaClient) {}
+	constructor(private drizzleDb: typeof db) {}
 
 	/**
 	 * Get contact limit for a subscription plan
@@ -29,32 +48,9 @@ export class ContactLimitService {
 		// Get all contacts that have either:
 		// 1. Sent messages to the user
 		// 2. Viewed the user's profile
-		const [contactsFromMessages, contactsFromViews] = await Promise.all([
-			// Count unique contacts from incoming messages
-			this.db.$queryRaw<[{ count: number }]>`
-				SELECT COUNT(DISTINCT uc.external_id)::int as count
-				FROM "UnipileContact" uc
-				INNER JOIN "UnipileAccount" ua ON uc.unipile_account_id = ua.id
-				INNER JOIN "UnipileMessage" um ON um.sender_id = uc.external_id
-				WHERE ua.user_id = ${userId}
-				  AND ua.is_deleted = false
-				  AND uc.is_deleted = false
-				  AND um.is_deleted = false
-				  AND um.is_outgoing = false
-			`,
-
-			// Count unique contacts from profile views
-			this.db.$queryRaw<[{ count: number }]>`
-				SELECT COUNT(DISTINCT viewer_profile_id)::int as count
-				FROM "UnipileProfileView"
-				WHERE user_id = ${userId}
-				  AND viewer_profile_id IS NOT NULL
-				  AND is_deleted = false
-			`,
-		]);
 
 		// Use a UNION to get the total unique count across both sources
-		const [uniqueContacts] = await this.db.$queryRaw<[{ count: number }]>`
+		const result = await this.drizzleDb.execute(sql`
 			SELECT COUNT(DISTINCT contact_id)::int as count
 			FROM (
 				-- Contacts from incoming messages
@@ -77,9 +73,9 @@ export class ContactLimitService {
 				  AND viewer_profile_id IS NOT NULL
 				  AND is_deleted = false
 			) combined_contacts
-		`;
+		`);
 
-		return uniqueContacts?.count || 0;
+		return (result[0] as { count: number })?.count || 0;
 	}
 
 	/**
@@ -87,11 +83,13 @@ export class ContactLimitService {
 	 */
 	async getContactLimitStatus(userId: string): Promise<ContactLimitStatus> {
 		// Get user's subscription plan
-		const subscription = await this.db.subscription.findUnique({
-			where: { user_id: userId },
-			select: { plan: true, status: true },
-		});
+		const result = await this.drizzleDb
+			.select({ plan: subscriptions.plan, status: subscriptions.status })
+			.from(subscriptions)
+			.where(eq(subscriptions.user_id, userId))
+			.limit(1);
 
+		const subscription = result[0];
 		const plan = subscription?.plan || "FREE";
 		const limit = this.getContactLimit(plan as SubscriptionPlan);
 		const count = await this.countUserContacts(userId);
@@ -116,20 +114,10 @@ export class ContactLimitService {
 	 * Obfuscate chat data when contact limit is exceeded
 	 */
 	obfuscateChat(
-		chat: Prisma.UnipileChatGetPayload<{
-			include: {
-				UnipileChatAttendee: { include: { contact: true } };
-				UnipileMessage: { include: { unipile_account: true } };
-			};
-		}>,
+		chat: ChatWithDetails,
 		contactIndex: number,
 		limit: number,
-	): Prisma.UnipileChatGetPayload<{
-		include: {
-			UnipileChatAttendee: { include: { contact: true } };
-			UnipileMessage: { include: { unipile_account: true } };
-		};
-	}> {
+	): ChatWithDetails {
 		if (contactIndex <= limit) {
 			return chat; // Return original chat if within limit
 		}
@@ -169,17 +157,8 @@ export class ContactLimitService {
 	 */
 	async applyContactLimitsToChats(
 		userId: string,
-		chats: Prisma.UnipileChatGetPayload<{
-			include: {
-				UnipileChatAttendee: { include: { contact: true } };
-				UnipileMessage: { include: { unipile_account: true } };
-			};
-		}>[],
-	): Promise<
-		Prisma.UnipileChatGetPayload<{
-			include: { UnipileChatAttendee: { include: { contact: true } } };
-		}>[]
-	> {
+		chats: ChatWithDetails[],
+	): Promise<ChatWithDetails[]> {
 		const limitStatus = await this.getContactLimitStatus(userId);
 
 		if (!limitStatus.isExceeded) {
@@ -188,12 +167,7 @@ export class ContactLimitService {
 
 		// Group chats by contact and find the most recent message time for each contact
 		const contactToLatestTime = new Map<string, number>();
-		const contactToChats = new Map<
-			string,
-			Prisma.UnipileChatGetPayload<{
-				include: { UnipileChatAttendee: { include: { contact: true } } };
-			}>[]
-		>();
+		const contactToChats = new Map<string, ChatWithDetails[]>();
 
 		for (const chat of chats) {
 			const contactId = this.getChatContactId(chat);
@@ -246,13 +220,7 @@ export class ContactLimitService {
 	/**
 	 * Get the primary contact ID from a chat
 	 */
-	private getChatContactId(
-		chat: Prisma.UnipileChatGetPayload<{
-			include: {
-				UnipileChatAttendee: { include: { contact: true } };
-			};
-		}>,
-	): string | null {
+	private getChatContactId(chat: ChatWithDetails): string | null {
 		// For direct chats, get the non-self attendee
 		const nonSelfAttendee = chat.UnipileChatAttendee?.find(
 			(attendee) => attendee.is_self === 0,

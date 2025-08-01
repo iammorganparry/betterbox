@@ -1,13 +1,18 @@
-import { eq, and, or, count, desc, sql, getTableColumns } from 'drizzle-orm';
-import type { Database } from '~/db';
-import { users, unipileAccounts, unipileAccountStatusEnum } from '~/db/schema';
+import { eq, and, or, count, desc, sql, getTableColumns } from "drizzle-orm";
+import type { db } from "~/db";
+import {
+	users,
+	unipileAccounts,
+	type unipileAccountStatusEnum,
+} from "~/db/schema";
 
 // Use Drizzle's inferred types
 export type UnipileAccount = typeof unipileAccounts.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type CreateAccountData = typeof unipileAccounts.$inferInsert;
 export type UpdateAccountData = Partial<CreateAccountData>;
-export type UnipileAccountStatus = typeof unipileAccountStatusEnum.enumValues[number];
+export type UnipileAccountStatus =
+	(typeof unipileAccountStatusEnum.enumValues)[number];
 
 // Account with user relationship
 export type AccountWithUser = UnipileAccount & {
@@ -24,14 +29,14 @@ export interface FindAccountOptions {
 }
 
 export class UnipileAccountService {
-	constructor(private readonly db: Database) {}
+	constructor(private readonly drizzleDb: typeof db) {}
 
 	/**
 	 * Find user by email or Clerk ID
 	 */
 	async findUserByIdentifier(identifier: string): Promise<User | null> {
 		// Try to find by id (clerk_id) first, then by email
-		const result = await this.db
+		const result = await this.drizzleDb
 			.select()
 			.from(users)
 			.where(or(eq(users.id, identifier), eq(users.email, identifier)))
@@ -44,7 +49,7 @@ export class UnipileAccountService {
 	 * Find user by Clerk ID specifically
 	 */
 	async findUserByClerkId(clerkId: string): Promise<User | null> {
-		const result = await this.db
+		const result = await this.drizzleDb
 			.select()
 			.from(users)
 			.where(eq(users.id, clerkId))
@@ -65,42 +70,42 @@ export class UnipileAccountService {
 		const { include_user = false, include_deleted = false } = options;
 
 		const whereConditions = [
-			eq(unipileAccounts.userId, userId),
-			eq(unipileAccounts.accountId, accountId),
+			eq(unipileAccounts.user_id, userId),
+			eq(unipileAccounts.account_id, accountId),
 			eq(unipileAccounts.provider, provider),
 		];
 
 		if (!include_deleted) {
-			whereConditions.push(eq(unipileAccounts.isDeleted, false));
+			whereConditions.push(eq(unipileAccounts.is_deleted, false));
 		}
 
 		if (include_user) {
-			const result = await this.db
+			const result = await this.drizzleDb
 				.select({
 					...getTableColumns(unipileAccounts),
 					user: getTableColumns(users),
 				})
 				.from(unipileAccounts)
-				.leftJoin(users, eq(unipileAccounts.userId, users.id))
+				.leftJoin(users, eq(unipileAccounts.user_id, users.id))
 				.where(and(...whereConditions))
 				.limit(1);
 
 			const row = result[0];
-			if (!row) return null;
+			if (!row || !row.user) return null;
 
 			return {
 				...row,
-				user: row.user!,
+				user: row.user,
 			} as AccountWithUser;
-		} else {
-			const result = await this.db
-				.select()
-				.from(unipileAccounts)
-				.where(and(...whereConditions))
-				.limit(1);
-
-			return result[0] || null;
 		}
+
+		const result = await this.drizzleDb
+			.select()
+			.from(unipileAccounts)
+			.where(and(...whereConditions))
+			.limit(1);
+
+		return result[0] || null;
 	}
 
 	/**
@@ -114,41 +119,41 @@ export class UnipileAccountService {
 		const { include_user = false, include_deleted = false } = options;
 
 		const whereConditions = [
-			eq(unipileAccounts.accountId, accountId),
+			eq(unipileAccounts.account_id, accountId),
 			eq(unipileAccounts.provider, provider),
 		];
 
 		if (!include_deleted) {
-			whereConditions.push(eq(unipileAccounts.isDeleted, false));
+			whereConditions.push(eq(unipileAccounts.is_deleted, false));
 		}
 
 		if (include_user) {
-			const result = await this.db
+			const result = await this.drizzleDb
 				.select({
 					...getTableColumns(unipileAccounts),
 					user: getTableColumns(users),
 				})
 				.from(unipileAccounts)
-				.leftJoin(users, eq(unipileAccounts.userId, users.id))
+				.leftJoin(users, eq(unipileAccounts.user_id, users.id))
 				.where(and(...whereConditions))
 				.limit(1);
 
 			const row = result[0];
-			if (!row) return null;
+			if (!row || !row.user) return null;
 
 			return {
 				...row,
-				user: row.user!,
+				user: row.user,
 			} as AccountWithUser;
-		} else {
-			const result = await this.db
-				.select()
-				.from(unipileAccounts)
-				.where(and(...whereConditions))
-				.limit(1);
-
-			return result[0] || null;
 		}
+
+		const result = await this.drizzleDb
+			.select()
+			.from(unipileAccounts)
+			.where(and(...whereConditions))
+			.limit(1);
+
+		return result[0] || null;
 	}
 
 	/**
@@ -162,29 +167,36 @@ export class UnipileAccountService {
 		createData?: Partial<CreateAccountData>,
 	): Promise<UnipileAccount> {
 		const insertData: CreateAccountData = {
-			userId,
-			accountId,
+			user_id: userId,
+			account_id: accountId,
 			provider,
-			status: 'connected',
-			isDeleted: false,
-			createdAt: new Date(),
-			updatedAt: new Date(),
+			status: "connected",
+			is_deleted: false,
+			created_at: new Date(),
+			updated_at: new Date(),
 			...createData,
 		};
 
-		const result = await this.db
+		const result = await this.drizzleDb
 			.insert(unipileAccounts)
 			.values(insertData)
 			.onConflictDoUpdate({
-				target: [unipileAccounts.userId, unipileAccounts.provider, unipileAccounts.accountId],
+				target: [
+					unipileAccounts.user_id,
+					unipileAccounts.provider,
+					unipileAccounts.account_id,
+				],
 				set: {
 					...updateData,
-					updatedAt: new Date(),
+					updated_at: new Date(),
 				},
 			})
 			.returning();
 
-		return result[0]!;
+		if (!result[0]) {
+			throw new Error("Failed to upsert unipile account");
+		}
+		return result[0];
 	}
 
 	/**
@@ -195,20 +207,22 @@ export class UnipileAccountService {
 		provider: string,
 		status: string,
 	): Promise<{ count: number }> {
-		const result = await this.db
+		const result = await this.drizzleDb
 			.update(unipileAccounts)
 			.set({
 				status: status as UnipileAccountStatus,
-				updatedAt: new Date(),
+				updated_at: new Date(),
 			})
-			.where(and(
-				eq(unipileAccounts.accountId, accountId),
-				eq(unipileAccounts.provider, provider),
-				eq(unipileAccounts.isDeleted, false)
-			));
+			.where(
+				and(
+					eq(unipileAccounts.account_id, accountId),
+					eq(unipileAccounts.provider, provider),
+					eq(unipileAccounts.is_deleted, false),
+				),
+			);
 
 		// Drizzle doesn't return count by default, so we simulate the BatchPayload
-		return { count: result.rowCount || 0 };
+		return { count: result.length || 0 };
 	}
 
 	/**
@@ -219,21 +233,26 @@ export class UnipileAccountService {
 		accountId: string,
 		provider: string,
 	): Promise<UnipileAccount> {
-		const result = await this.db
+		const result = await this.drizzleDb
 			.update(unipileAccounts)
 			.set({
-				isDeleted: true,
-				status: 'disconnected',
-				updatedAt: new Date(),
+				is_deleted: true,
+				status: "disconnected",
+				updated_at: new Date(),
 			})
-			.where(and(
-				eq(unipileAccounts.userId, userId),
-				eq(unipileAccounts.provider, provider),
-				eq(unipileAccounts.accountId, accountId)
-			))
+			.where(
+				and(
+					eq(unipileAccounts.user_id, userId),
+					eq(unipileAccounts.provider, provider),
+					eq(unipileAccounts.account_id, accountId),
+				),
+			)
 			.returning();
 
-		return result[0]!;
+		if (!result[0]) {
+			throw new Error("Failed to mark account as deleted");
+		}
+		return result[0];
 	}
 
 	/**
@@ -244,21 +263,21 @@ export class UnipileAccountService {
 		provider?: string,
 		includeDeleted = false,
 	): Promise<UnipileAccount[]> {
-		const whereConditions = [eq(unipileAccounts.userId, userId)];
+		const whereConditions = [eq(unipileAccounts.user_id, userId)];
 
 		if (provider) {
 			whereConditions.push(eq(unipileAccounts.provider, provider));
 		}
 
 		if (!includeDeleted) {
-			whereConditions.push(eq(unipileAccounts.isDeleted, false));
+			whereConditions.push(eq(unipileAccounts.is_deleted, false));
 		}
 
-		return await this.db
+		return await this.drizzleDb
 			.select()
 			.from(unipileAccounts)
 			.where(and(...whereConditions))
-			.orderBy(desc(unipileAccounts.createdAt));
+			.orderBy(desc(unipileAccounts.created_at));
 	}
 
 	/**
@@ -269,18 +288,24 @@ export class UnipileAccountService {
 		accountId: string,
 		provider: string,
 	): Promise<boolean> {
-		const result = await this.db
+		const result = await this.drizzleDb
 			.select({ count: count() })
 			.from(unipileAccounts)
-			.where(and(
-				eq(unipileAccounts.userId, userId),
-				eq(unipileAccounts.accountId, accountId),
-				eq(unipileAccounts.provider, provider),
-				eq(unipileAccounts.status, 'connected'),
-				eq(unipileAccounts.isDeleted, false)
-			));
+			.where(
+				and(
+					eq(unipileAccounts.user_id, userId),
+					eq(unipileAccounts.account_id, accountId),
+					eq(unipileAccounts.provider, provider),
+					eq(unipileAccounts.status, "connected"),
+					eq(unipileAccounts.is_deleted, false),
+				),
+			);
 
-		return result[0]?.count > 0;
+		if (!result[0]) {
+			return false;
+		}
+
+		return result[0].count > 0;
 	}
 
 	/**
@@ -292,22 +317,24 @@ export class UnipileAccountService {
 		disconnectedAccounts: number;
 		errorAccounts: number;
 	}> {
-		const result = await this.db.execute(sql`
+		const result = await this.drizzleDb.execute(sql`
 			SELECT 
 				COUNT(*)::int as total_accounts,
 				COUNT(*) FILTER (WHERE status = 'connected')::int as connected_accounts,
 				COUNT(*) FILTER (WHERE status = 'disconnected')::int as disconnected_accounts,
 				COUNT(*) FILTER (WHERE status = 'error')::int as error_accounts
 			FROM ${unipileAccounts}
-			WHERE ${eq(unipileAccounts.userId, userId)} AND ${eq(unipileAccounts.isDeleted, false)}
+			WHERE ${eq(unipileAccounts.user_id, userId)} AND ${eq(unipileAccounts.is_deleted, false)}
 		`);
 
-		const stats = result.rows[0] as {
-			total_accounts: number;
-			connected_accounts: number;
-			disconnected_accounts: number;
-			error_accounts: number;
-		} | undefined;
+		const stats = result[0] as
+			| {
+					total_accounts: number;
+					connected_accounts: number;
+					disconnected_accounts: number;
+					error_accounts: number;
+			  }
+			| undefined;
 
 		return {
 			totalAccounts: stats?.total_accounts || 0,

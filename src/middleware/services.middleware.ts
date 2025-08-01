@@ -1,5 +1,5 @@
 import type { Database } from "~/db";
-import { db } from "~/server/db";
+import { db } from "~/db";
 import { UserService } from "~/services/db/user.service";
 import { UnipileAccountService } from "~/services/db/unipile-account.service";
 import { UnipileChatService } from "~/services/db/unipile-chat.service";

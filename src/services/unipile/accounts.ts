@@ -5,7 +5,7 @@ import type {
 	UnipileAccountStatus,
 	User,
 } from "generated/prisma";
-import { db } from "~/server/db";
+import { db } from "~/db";
 
 export interface UnipileAccountWithUser extends UnipileAccount {
 	user: User;

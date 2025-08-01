@@ -11,7 +11,7 @@ import superjson from "superjson";
 import { ZodError } from "zod";
 import { auth } from "@clerk/nextjs/server";
 
-import { db } from "~/server/db";
+import { db } from "~/db";
 import { UserService } from "~/services/db/user.service";
 import { UnipileAccountService } from "~/services/db/unipile-account.service";
 import { UnipileMessageService } from "~/services/db/unipile-message.service";

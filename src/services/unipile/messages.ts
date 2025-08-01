@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "generated/prisma";
-import { db } from "~/server/db";
+import { db } from "~/db";
 
 export type CreateUnipileMessageData = Prisma.UnipileMessageCreateInput;
 

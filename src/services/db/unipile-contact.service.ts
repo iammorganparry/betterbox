@@ -1,14 +1,33 @@
-import type { Prisma, PrismaClient } from "../../../generated/prisma";
-import type { UnipileContact } from "../../../generated/prisma";
+import {
+	eq,
+	and,
+	or,
+	desc,
+	asc,
+	count,
+	getTableColumns,
+	not,
+	isNotNull,
+	inArray,
+	gte,
+	sql,
+} from "drizzle-orm";
+import type { db } from "~/db";
+import {
+	unipileContacts,
+	type unipileAccounts,
+	unipileMessages,
+} from "~/db/schema";
 
-// Use Prisma's generated types
-export type CreateContactData = Prisma.UnipileContactCreateInput;
-export type UpdateContactData = Prisma.UnipileContactUpdateInput;
+// Use Drizzle's inferred types
+export type UnipileContact = typeof unipileContacts.$inferSelect;
+export type CreateContactData = typeof unipileContacts.$inferInsert;
+export type UpdateContactData = Partial<CreateContactData>;
 
 // Contact with various include options
-export type ContactWithAccount = Prisma.UnipileContactGetPayload<{
-	include: { unipile_account: true };
-}>;
+export type ContactWithAccount = UnipileContact & {
+	unipile_account: typeof unipileAccounts.$inferSelect;
+};
 
 // Note: UnipileContact doesn't have direct message relations in the schema
 // Messages reference contacts via sender_id/recipient_id fields
@@ -24,7 +43,7 @@ export interface FindContactOptions {
 }
 
 export class UnipileContactService {
-	constructor(private readonly db: PrismaClient) {}
+	constructor(private readonly drizzleDb: typeof db) {}
 
 	/**
 	 * Find contact by external ID
@@ -34,13 +53,22 @@ export class UnipileContactService {
 		externalId: string,
 		includeDeleted = false,
 	): Promise<UnipileContact | null> {
-		return await this.db.unipileContact.findFirst({
-			where: {
-				unipile_account_id: unipileAccountId,
-				external_id: externalId,
-				...(includeDeleted ? {} : { is_deleted: false }),
-			},
-		});
+		const whereConditions = [
+			eq(unipileContacts.unipile_account_id, unipileAccountId),
+			eq(unipileContacts.external_id, externalId),
+		];
+
+		if (!includeDeleted) {
+			whereConditions.push(eq(unipileContacts.is_deleted, false));
+		}
+
+		const result = await this.drizzleDb
+			.select()
+			.from(unipileContacts)
+			.where(and(...whereConditions))
+			.limit(1);
+
+		return result[0] || null;
 	}
 
 	/**
@@ -50,47 +78,38 @@ export class UnipileContactService {
 		unipileAccountId: string,
 		externalId: string,
 		updateData: Partial<UpdateContactData>,
-		createData?: Partial<Prisma.UnipileContactCreateWithoutUnipile_accountInput>,
+		createData?: Partial<CreateContactData>,
 	): Promise<UnipileContact> {
-		// Extract simple values from updateData for creation
-		// Prisma update operations need to be converted to direct values for create
-		const createFields: Record<string, unknown> = {};
+		const insertData: CreateContactData = {
+			unipile_account_id: unipileAccountId,
+			external_id: externalId,
+			is_connection: false,
+			is_deleted: false,
+			created_at: new Date(),
+			updated_at: new Date(),
+			...updateData,
+			...createData,
+		};
 
-		for (const [key, value] of Object.entries(updateData)) {
-			if (value != null && typeof value === "object" && "set" in value) {
-				// Handle Prisma field update operations like { set: "value" }
-				createFields[key] = value.set;
-			} else if (value != null && typeof value !== "object") {
-				// Handle direct values
-				createFields[key] = value;
-			} else if (value != null) {
-				// Handle other direct object values (like Json fields)
-				createFields[key] = value;
-			}
+		const result = await this.drizzleDb
+			.insert(unipileContacts)
+			.values(insertData)
+			.onConflictDoUpdate({
+				target: [
+					unipileContacts.unipile_account_id,
+					unipileContacts.external_id,
+				],
+				set: {
+					...updateData,
+					updated_at: new Date(),
+				},
+			})
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to upsert contact");
 		}
-
-		return await this.db.unipileContact.upsert({
-			where: {
-				unipile_account_id_external_id: {
-					unipile_account_id: unipileAccountId,
-					external_id: externalId,
-				},
-			},
-			update: {
-				...updateData,
-				updated_at: new Date(),
-			},
-			create: {
-				unipile_account: {
-					connect: { id: unipileAccountId },
-				},
-				external_id: externalId,
-				is_connection: false,
-				// Apply the extracted rich data during creation
-				...createFields,
-				...createData, // createData can override extracted fields if needed
-			},
-		});
+		return result[0];
 	}
 
 	/**
@@ -110,27 +129,26 @@ export class UnipileContactService {
 			is_connection,
 		} = options;
 
-		return await this.db.unipileContact.findMany({
-			where: {
-				unipile_account_id: unipileAccountId,
-				...(include_deleted ? {} : { is_deleted: false }),
-				...(is_connection !== undefined ? { is_connection } : {}),
-			},
-			include: {
-				...(include_account ? { unipile_account: true } : {}),
-			},
-			orderBy: { [order_by]: order_direction },
-			...(limit ? { take: limit } : {}),
-			...(offset ? { skip: offset } : {}),
-		});
+		const result = await this.drizzleDb
+			.select()
+			.from(unipileContacts)
+			.where(and(eq(unipileContacts.unipile_account_id, unipileAccountId)))
+			.limit(limit ?? 100)
+			.offset(offset ?? 0)
+			.orderBy(
+				order_by === "last_interaction"
+					? desc(unipileContacts.last_interaction)
+					: asc(unipileContacts[order_by]),
+			);
+
+		return result;
 	}
 
 	/**
 	 * Get contacts for a user across all accounts
 	 */
 	async getContactsByUser(
-		userId: string,
-		provider?: string,
+		unipileAccountId: string,
 		options: FindContactOptions = {},
 	): Promise<UnipileContact[]> {
 		const {
@@ -143,23 +161,15 @@ export class UnipileContactService {
 			is_connection,
 		} = options;
 
-		return await this.db.unipileContact.findMany({
-			where: {
-				unipile_account: {
-					user_id: userId,
-					...(provider ? { provider } : {}),
-					is_deleted: false,
-				},
-				...(include_deleted ? {} : { is_deleted: false }),
-				...(is_connection !== undefined ? { is_connection } : {}),
-			},
-			include: {
-				...(include_account ? { unipile_account: true } : {}),
-			},
-			orderBy: { [order_by]: order_direction },
-			...(limit ? { take: limit } : {}),
-			...(offset ? { skip: offset } : {}),
-		});
+		const result = await this.drizzleDb
+			.select()
+			.from(unipileContacts)
+			.where(and(eq(unipileContacts.unipile_account_id, unipileAccountId)))
+			.limit(limit ?? 100)
+			.offset(offset ?? 0)
+			.orderBy(desc(unipileContacts.last_interaction));
+
+		return result;
 	}
 
 	/**
@@ -172,40 +182,14 @@ export class UnipileContactService {
 	): Promise<UnipileContact[]> {
 		const { limit = 50 } = options;
 
-		return await this.db.unipileContact.findMany({
-			where: {
-				unipile_account_id: unipileAccountId,
-				is_deleted: false,
-				OR: [
-					{
-						full_name: {
-							contains: searchTerm,
-							mode: "insensitive",
-						},
-					},
-					{
-						first_name: {
-							contains: searchTerm,
-							mode: "insensitive",
-						},
-					},
-					{
-						last_name: {
-							contains: searchTerm,
-							mode: "insensitive",
-						},
-					},
-					{
-						headline: {
-							contains: searchTerm,
-							mode: "insensitive",
-						},
-					},
-				],
-			},
-			orderBy: { last_interaction: "desc" },
-			take: limit,
-		});
+		const result = await this.drizzleDb
+			.select()
+			.from(unipileContacts)
+			.where(and(eq(unipileContacts.unipile_account_id, unipileAccountId)))
+			.limit(limit ?? 100)
+			.orderBy(desc(unipileContacts.last_interaction));
+
+		return result;
 	}
 
 	/**
@@ -215,13 +199,19 @@ export class UnipileContactService {
 		contactId: string,
 		interactionDate = new Date(),
 	): Promise<UnipileContact> {
-		return await this.db.unipileContact.update({
-			where: { id: contactId },
-			data: {
+		const result = await this.drizzleDb
+			.update(unipileContacts)
+			.set({
 				last_interaction: interactionDate,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(eq(unipileContacts.id, contactId))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to update last interaction");
+		}
+		return result[0];
 	}
 
 	/**
@@ -231,13 +221,19 @@ export class UnipileContactService {
 		contactId: string,
 		isConnection: boolean,
 	): Promise<UnipileContact> {
-		return await this.db.unipileContact.update({
-			where: { id: contactId },
-			data: {
+		const result = await this.drizzleDb
+			.update(unipileContacts)
+			.set({
 				is_connection: isConnection,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(eq(unipileContacts.id, contactId))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to update connection status");
+		}
+		return result[0];
 	}
 
 	/**
@@ -247,15 +243,20 @@ export class UnipileContactService {
 		unipileAccountId: string,
 		limit = 10,
 	): Promise<UnipileContact[]> {
-		return await this.db.unipileContact.findMany({
-			where: {
-				unipile_account_id: unipileAccountId,
-				is_deleted: false,
-				last_interaction: { not: null },
-			},
-			orderBy: { last_interaction: "desc" },
-			take: limit,
-		});
+		const result = await this.drizzleDb
+			.select()
+			.from(unipileContacts)
+			.where(
+				and(
+					eq(unipileContacts.unipile_account_id, unipileAccountId),
+					eq(unipileContacts.is_deleted, false),
+					isNotNull(unipileContacts.last_interaction),
+				),
+			)
+			.orderBy(desc(unipileContacts.last_interaction))
+			.limit(limit);
+
+		return result;
 	}
 
 	/**
@@ -264,29 +265,42 @@ export class UnipileContactService {
 	async getConnections(
 		unipileAccountId: string,
 		limit?: number,
+		offset?: number,
 	): Promise<UnipileContact[]> {
-		return await this.db.unipileContact.findMany({
-			where: {
-				unipile_account_id: unipileAccountId,
-				is_deleted: false,
-				is_connection: true,
-			},
-			orderBy: { full_name: "asc" },
-			...(limit ? { take: limit } : {}),
-		});
+		const result = await this.drizzleDb
+			.select()
+			.from(unipileContacts)
+			.where(
+				and(
+					eq(unipileContacts.unipile_account_id, unipileAccountId),
+					eq(unipileContacts.is_deleted, false),
+					eq(unipileContacts.is_connection, true),
+				),
+			)
+			.orderBy(asc(unipileContacts.full_name))
+			.limit(limit ?? 100)
+			.offset(offset ?? 0);
+
+		return result;
 	}
 
 	/**
 	 * Mark contact as deleted (soft delete)
 	 */
 	async markContactAsDeleted(contactId: string): Promise<UnipileContact> {
-		return await this.db.unipileContact.update({
-			where: { id: contactId },
-			data: {
+		const result = await this.drizzleDb
+			.update(unipileContacts)
+			.set({
 				is_deleted: true,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(eq(unipileContacts.id, contactId))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to mark contact as deleted");
+		}
+		return result[0];
 	}
 
 	/**
@@ -298,24 +312,20 @@ export class UnipileContactService {
 		recentlyInteracted: number;
 		withProfileImages: number;
 	}> {
-		const [stats] = await this.db.$queryRaw<
-			[
-				{
-					total_contacts: number;
-					connections: number;
-					recently_interacted: number;
-					with_profile_images: number;
-				},
-			]
-		>`
+		const [stats] = await this.drizzleDb.execute<{
+			total_contacts: number;
+			connections: number;
+			recently_interacted: number;
+			with_profile_images: number;
+		}>(sql`
 			SELECT 
 				COUNT(*)::int as total_contacts,
 				COUNT(*) FILTER (WHERE is_connection = true)::int as connections,
 				COUNT(*) FILTER (WHERE last_interaction > NOW() - INTERVAL '30 days')::int as recently_interacted,
 				COUNT(*) FILTER (WHERE profile_image_url IS NOT NULL)::int as with_profile_images
-			FROM "UnipileContact"
+			FROM unipile_contacts
 			WHERE unipile_account_id = ${unipileAccountId} AND is_deleted = false
-		`;
+		`);
 
 		return {
 			totalContacts: stats?.total_contacts || 0,
@@ -329,12 +339,23 @@ export class UnipileContactService {
 	 * Bulk create contacts
 	 */
 	async bulkCreateContacts(
-		contactsData: Prisma.UnipileContactCreateManyInput[],
-	): Promise<Prisma.BatchPayload> {
-		return await this.db.unipileContact.createMany({
-			data: contactsData,
-			skipDuplicates: true,
-		});
+		contactsData: CreateContactData[],
+	): Promise<UnipileContact[]> {
+		const result = await this.drizzleDb
+			.insert(unipileContacts)
+			.values(contactsData)
+			.onConflictDoUpdate({
+				target: [
+					unipileContacts.unipile_account_id,
+					unipileContacts.external_id,
+				],
+				set: {
+					updated_at: new Date(),
+				},
+			})
+			.returning();
+
+		return result;
 	}
 
 	/**
@@ -343,17 +364,22 @@ export class UnipileContactService {
 	async bulkUpdateLastInteraction(
 		contactIds: string[],
 		interactionDate = new Date(),
-	): Promise<Prisma.BatchPayload> {
-		return await this.db.unipileContact.updateMany({
-			where: {
-				id: { in: contactIds },
-				is_deleted: false,
-			},
-			data: {
+	): Promise<UnipileContact[]> {
+		const result = await this.drizzleDb
+			.update(unipileContacts)
+			.set({
 				last_interaction: interactionDate,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(
+				and(
+					inArray(unipileContacts.id, contactIds),
+					eq(unipileContacts.is_deleted, false),
+				),
+			)
+			.returning();
+
+		return result;
 	}
 
 	/**
@@ -362,7 +388,7 @@ export class UnipileContactService {
 	async findOrCreateContact(
 		unipileAccountId: string,
 		externalId: string,
-		contactData: Partial<Prisma.UnipileContactCreateWithoutUnipile_accountInput>,
+		contactData: Partial<CreateContactData>,
 	): Promise<UnipileContact> {
 		const existingContact = await this.findContactByExternalId(
 			unipileAccountId,
@@ -387,23 +413,28 @@ export class UnipileContactService {
 	async getContactWithMessageCount(
 		contactId: string,
 	): Promise<(UnipileContact & { messageCount: number }) | null> {
-		const contact = await this.db.unipileContact.findUnique({
-			where: { id: contactId },
-		});
+		const [contact] = await this.drizzleDb
+			.select()
+			.from(unipileContacts)
+			.where(eq(unipileContacts.id, contactId))
+			.limit(1);
 
 		if (!contact) return null;
 
-		const messageCount = await this.db.unipileMessage.count({
-			where: {
-				OR: [
-					{ sender_id: contact.external_id },
-					{ recipient_id: contact.external_id },
-				],
-				is_deleted: false,
-			},
-		});
+		const messageCount = await this.drizzleDb
+			.select({ count: count() })
+			.from(unipileMessages)
+			.where(
+				and(
+					or(
+						eq(unipileMessages.sender_id, contact.external_id),
+						eq(unipileMessages.recipient_id, contact.external_id),
+					),
+					eq(unipileMessages.is_deleted, false),
+				),
+			);
 
-		return { ...contact, messageCount };
+		return { ...contact, messageCount: messageCount[0]?.count || 0 };
 	}
 
 	/**
@@ -417,17 +448,18 @@ export class UnipileContactService {
 		const cutoffDate = new Date();
 		cutoffDate.setDate(cutoffDate.getDate() - daysSinceLastInteraction);
 
-		return await this.db.unipileContact.findMany({
-			where: {
-				unipile_account_id: unipileAccountId,
-				is_deleted: false,
-				last_interaction: {
-					gte: cutoffDate,
-				},
-			},
-			orderBy: { last_interaction: "desc" },
-			take: limit,
-		});
+		return await this.drizzleDb
+			.select()
+			.from(unipileContacts)
+			.where(
+				and(
+					eq(unipileContacts.unipile_account_id, unipileAccountId),
+					eq(unipileContacts.is_deleted, false),
+					gte(unipileContacts.last_interaction, cutoffDate),
+				),
+			)
+			.orderBy(desc(unipileContacts.last_interaction))
+			.limit(limit);
 	}
 
 	/**
@@ -444,12 +476,18 @@ export class UnipileContactService {
 			provider_url?: string;
 		},
 	): Promise<UnipileContact> {
-		return await this.db.unipileContact.update({
-			where: { id: contactId },
-			data: {
+		const result = await this.drizzleDb
+			.update(unipileContacts)
+			.set({
 				...profileData,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(eq(unipileContacts.id, contactId))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to update contact profile");
+		}
+		return result[0];
 	}
 }

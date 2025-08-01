@@ -1,25 +1,29 @@
-import type { Prisma, PrismaClient } from "../../../generated/prisma";
+import { eq, and, desc, count, getTableColumns, gt, lt } from "drizzle-orm";
+import type { db } from "~/db";
+import { subscriptions, paymentMethods, type users } from "~/db/schema";
 
-// Note: These types will be available after running Prisma migration
-type Subscription = Prisma.SubscriptionGetPayload<{
-	include: {
-		user: true;
-		PaymentMethod: true;
-	};
-}>;
-type PaymentMethod = Prisma.PaymentMethodGetPayload<{
-	include: {
-		subscription: true;
-	};
-}>;
+// Use Drizzle's inferred types
+export type Subscription = typeof subscriptions.$inferSelect;
+export type PaymentMethod = typeof paymentMethods.$inferSelect;
+export type CreateSubscriptionData = typeof subscriptions.$inferInsert;
+export type UpdateSubscriptionData = Partial<CreateSubscriptionData>;
 
-type SubscriptionPlan =
+// Subscription with relationships
+export type SubscriptionWithUser = Subscription & {
+	user: typeof users.$inferSelect;
+};
+
+export type SubscriptionWithPaymentMethod = Subscription & {
+	paymentMethod: PaymentMethod[];
+};
+
+export type SubscriptionPlan =
 	| "FREE"
 	| "STARTER"
 	| "PROFESSIONAL"
 	| "ENTERPRISE"
 	| "GOLD";
-type SubscriptionStatus =
+export type SubscriptionStatus =
 	| "ACTIVE"
 	| "CANCELED"
 	| "PAST_DUE"
@@ -29,7 +33,7 @@ type SubscriptionStatus =
 	| "INCOMPLETE_EXPIRED";
 
 export class SubscriptionService {
-	constructor(private db: PrismaClient) {}
+	constructor(private drizzleDb: typeof db) {}
 
 	/**
 	 * Create or update subscription for a user (upsert since only one subscription per user)
@@ -45,11 +49,10 @@ export class SubscriptionService {
 		trialStart?: Date;
 		trialEnd?: Date;
 	}): Promise<Subscription> {
-		return this.db.subscription.upsert({
-			where: {
+		const result = await this.drizzleDb
+			.insert(subscriptions)
+			.values({
 				user_id: data.userId,
-			},
-			update: {
 				plan: data.plan,
 				status: data.status,
 				stripe_subscription_id: data.stripeSubscriptionId,
@@ -58,61 +61,68 @@ export class SubscriptionService {
 				current_period_end: data.currentPeriodEnd,
 				trial_start: data.trialStart,
 				trial_end: data.trialEnd,
+				created_at: new Date(),
 				updated_at: new Date(),
-			},
-			create: {
-				user_id: data.userId,
-				plan: data.plan,
-				status: data.status,
-				stripe_subscription_id: data.stripeSubscriptionId,
-				stripe_customer_id: data.stripeCustomerId,
-				current_period_start: data.currentPeriodStart,
-				current_period_end: data.currentPeriodEnd,
-				trial_start: data.trialStart,
-				trial_end: data.trialEnd,
-			},
-			include: {
-				user: true,
-				PaymentMethod: true,
-			},
-		});
+			})
+			.onConflictDoUpdate({
+				target: [subscriptions.user_id],
+				set: {
+					plan: data.plan,
+					status: data.status,
+					stripe_subscription_id: data.stripeSubscriptionId,
+					stripe_customer_id: data.stripeCustomerId,
+					current_period_start: data.currentPeriodStart,
+					current_period_end: data.currentPeriodEnd,
+					trial_start: data.trialStart,
+					trial_end: data.trialEnd,
+					updated_at: new Date(),
+				},
+			})
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to create or update subscription");
+		}
+
+		return result[0];
 	}
 
 	/**
 	 * Get active subscription for a user
 	 */
 	async getActiveSubscription(userId: string): Promise<Subscription | null> {
-		return this.db.subscription.findFirst({
-			where: {
-				user_id: userId,
-				is_deleted: false,
-				status: {
-					in: ["ACTIVE", "TRIALING"],
-				},
-			},
-			include: {
-				user: true,
-				PaymentMethod: true,
-			},
-			orderBy: {
-				created_at: "desc",
-			},
-		});
+		const result = await this.drizzleDb
+			.select()
+			.from(subscriptions)
+			.where(
+				and(
+					eq(subscriptions.user_id, userId),
+					eq(subscriptions.is_deleted, false),
+					eq(subscriptions.status, "ACTIVE"),
+				),
+			);
+
+		if (!result[0]) {
+			throw new Error("Subscription not found");
+		}
+
+		return result[0];
 	}
 
 	/**
 	 * Get subscription for a user
 	 */
 	async getUserSubscription(userId: string): Promise<Subscription | null> {
-		return this.db.subscription.findUnique({
-			where: {
-				user_id: userId,
-			},
-			include: {
-				user: true,
-				PaymentMethod: true,
-			},
-		});
+		const result = await this.drizzleDb
+			.select()
+			.from(subscriptions)
+			.where(eq(subscriptions.user_id, userId));
+
+		if (!result[0]) {
+			throw new Error("Subscription not found");
+		}
+
+		return result[0];
 	}
 
 	/**
@@ -131,11 +141,9 @@ export class SubscriptionService {
 			canceledAt: Date;
 		}>,
 	): Promise<Subscription> {
-		return this.db.subscription.update({
-			where: {
-				id: subscriptionId,
-			},
-			data: {
+		const result = await this.drizzleDb
+			.update(subscriptions)
+			.set({
 				plan: data.plan,
 				status: data.status,
 				stripe_subscription_id: data.stripeSubscriptionId,
@@ -145,32 +153,62 @@ export class SubscriptionService {
 				cancel_at_period_end: data.cancelAtPeriodEnd,
 				canceled_at: data.canceledAt,
 				updated_at: new Date(),
-			},
-			include: {
-				user: true,
-				PaymentMethod: true,
-			},
-		});
+			})
+			.where(eq(subscriptions.id, subscriptionId))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to update subscription");
+		}
+
+		return result[0];
 	}
 
 	/**
 	 * Cancel subscription (soft delete)
 	 */
 	async cancelSubscription(subscriptionId: string): Promise<Subscription> {
-		return this.db.subscription.update({
-			where: {
-				id: subscriptionId,
-			},
-			data: {
+		const result = await this.drizzleDb
+			.update(subscriptions)
+			.set({
 				status: "CANCELED",
 				canceled_at: new Date(),
 				updated_at: new Date(),
-			},
-			include: {
-				user: true,
-				PaymentMethod: true,
-			},
-		});
+			})
+			.where(eq(subscriptions.id, subscriptionId))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to cancel subscription");
+		}
+
+		return result[0];
+	}
+
+	/**
+	 * Cancel subscription at period end
+	 */
+	async cancelSubscriptionAtPeriodEnd(
+		subscriptionId: string,
+		cancelAtPeriodEnd: boolean,
+		canceledAt: Date,
+	): Promise<Subscription> {
+		const result = await this.drizzleDb
+			.update(subscriptions)
+			.set({
+				status: "CANCELED",
+				cancel_at_period_end: cancelAtPeriodEnd,
+				canceled_at: canceledAt,
+				updated_at: new Date(),
+			})
+			.where(eq(subscriptions.id, subscriptionId))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to cancel subscription");
+		}
+
+		return result[0];
 	}
 
 	/**
@@ -188,19 +226,17 @@ export class SubscriptionService {
 	}): Promise<PaymentMethod> {
 		// If this is the default payment method, unset others
 		if (data.isDefault) {
-			await this.db.paymentMethod.updateMany({
-				where: {
-					subscription_id: data.subscriptionId,
-					is_deleted: false,
-				},
-				data: {
+			await this.drizzleDb
+				.update(paymentMethods)
+				.set({
 					is_default: false,
-				},
-			});
+				})
+				.where(eq(paymentMethods.subscription_id, data.subscriptionId));
 		}
 
-		return this.db.paymentMethod.create({
-			data: {
+		const result = await this.drizzleDb
+			.insert(paymentMethods)
+			.values({
 				subscription_id: data.subscriptionId,
 				stripe_payment_method_id: data.stripePaymentMethodId,
 				type: data.type,
@@ -209,51 +245,48 @@ export class SubscriptionService {
 				card_exp_month: data.cardExpMonth,
 				card_exp_year: data.cardExpYear,
 				is_default: data.isDefault ?? false,
-			},
-			include: {
-				subscription: true,
-			},
-		});
+			})
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to add payment method");
+		}
+
+		return result[0];
 	}
 
 	/**
 	 * Get payment methods for subscription
 	 */
 	async getPaymentMethods(subscriptionId: string): Promise<PaymentMethod[]> {
-		return this.db.paymentMethod.findMany({
-			where: {
-				subscription_id: subscriptionId,
-				is_deleted: false,
-			},
-			include: {
-				subscription: true,
-			},
-			orderBy: [
-				{
-					is_default: "desc",
-				},
-				{
-					created_at: "desc",
-				},
-			],
-		});
+		const result = await this.drizzleDb
+			.select()
+			.from(paymentMethods)
+			.where(eq(paymentMethods.subscription_id, subscriptionId));
+
+		if (!result[0]) {
+			throw new Error("Failed to get payment methods");
+		}
+
+		return result;
 	}
 
 	/**
 	 * Check if user has an active trial
 	 */
 	async hasActiveTrial(userId: string): Promise<boolean> {
-		const subscription = await this.db.subscription.findFirst({
-			where: {
-				user_id: userId,
-				is_deleted: false,
-				trial_end: {
-					gte: new Date(),
-				},
-			},
-		});
+		const subscription = await this.drizzleDb
+			.select()
+			.from(subscriptions)
+			.where(
+				and(
+					eq(subscriptions.user_id, userId),
+					eq(subscriptions.is_deleted, false),
+					gt(subscriptions.trial_end, new Date()),
+				),
+			);
 
-		return !!subscription;
+		return !!subscription[0];
 	}
 
 	/**
@@ -280,19 +313,22 @@ export class SubscriptionService {
 		const cutoffDate = new Date();
 		cutoffDate.setHours(cutoffDate.getHours() + hours);
 
-		return this.db.subscription.findMany({
-			where: {
-				status: "TRIALING",
-				trial_end: {
-					lte: cutoffDate,
-				},
-				is_deleted: false,
-			},
-			include: {
-				user: true,
-				PaymentMethod: true,
-			},
-		});
+		const result = await this.drizzleDb
+			.select()
+			.from(subscriptions)
+			.where(
+				and(
+					eq(subscriptions.status, "TRIALING"),
+					lt(subscriptions.trial_end, cutoffDate),
+					eq(subscriptions.is_deleted, false),
+				),
+			);
+
+		if (!result[0]) {
+			throw new Error("Failed to get trials ending soon");
+		}
+
+		return result;
 	}
 
 	/**

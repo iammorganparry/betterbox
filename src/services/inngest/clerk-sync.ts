@@ -1,5 +1,5 @@
 import { inngest } from "../inngest";
-import { db } from "~/server/db";
+import { db } from "~/db";
 
 /**
  * Sync user data when a new user is created in Clerk
