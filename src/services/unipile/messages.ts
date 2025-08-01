@@ -1,26 +1,27 @@
-import type { Prisma, PrismaClient } from "generated/prisma";
-import { db } from "~/db";
+import { eq, and, desc, asc, count } from "drizzle-orm";
+import type { Database } from "~/db";
+import { unipileMessages } from "~/db/schema";
 
-export type CreateUnipileMessageData = Prisma.UnipileMessageCreateInput;
-
-export type UpdateUnipileMessageData = Prisma.UnipileMessageUpdateInput;
+export type CreateUnipileMessageData = typeof unipileMessages.$inferInsert;
+export type UpdateUnipileMessageData = Partial<
+	typeof unipileMessages.$inferInsert
+>;
 
 export class UnipileMessageService {
-	constructor(private readonly db: PrismaClient) {}
+	constructor(private readonly db: Database) {}
 	/**
 	 * Find messages by Unipile account
 	 */
 	public async findByAccount(accountId: string, limit = 50, offset = 0) {
-		return this.db.unipileMessage.findMany({
-			where: {
-				unipile_account_id: accountId,
-				is_deleted: false,
-			},
-			orderBy: {
-				sent_at: "desc",
-			},
-			take: limit,
-			skip: offset,
+		return this.db.query.unipileMessages.findMany({
+			where: (table, { eq, and }) =>
+				and(
+					eq(table.unipile_account_id, accountId),
+					eq(table.is_deleted, false),
+				),
+			orderBy: (table, { desc }) => [desc(table.sent_at)],
+			limit,
+			offset,
 		});
 	}
 
@@ -28,15 +29,11 @@ export class UnipileMessageService {
 	 * Find messages by chat ID
 	 */
 	public async findByChatId(chatId: string, limit = 50) {
-		return this.db.unipileMessage.findMany({
-			where: {
-				chat_id: chatId,
-				is_deleted: false,
-			},
-			orderBy: {
-				sent_at: "asc",
-			},
-			take: limit,
+		return this.db.query.unipileMessages.findMany({
+			where: (table, { eq, and }) =>
+				and(eq(table.chat_id, chatId), eq(table.is_deleted, false)),
+			orderBy: (table, { asc }) => [asc(table.sent_at)],
+			limit,
 		});
 	}
 
@@ -44,15 +41,14 @@ export class UnipileMessageService {
 	 * Find unread messages for an account
 	 */
 	public async findUnreadByAccount(accountId: string) {
-		return this.db.unipileMessage.findMany({
-			where: {
-				unipile_account_id: accountId,
-				is_read: false,
-				is_deleted: false,
-			},
-			orderBy: {
-				sent_at: "desc",
-			},
+		return this.db.query.unipileMessages.findMany({
+			where: (table, { eq, and }) =>
+				and(
+					eq(table.unipile_account_id, accountId),
+					eq(table.is_read, false),
+					eq(table.is_deleted, false),
+				),
+			orderBy: (table, { desc }) => [desc(table.sent_at)],
 		});
 	}
 
@@ -60,28 +56,40 @@ export class UnipileMessageService {
 	 * Create a new message
 	 */
 	public async create(data: CreateUnipileMessageData) {
-		return this.db.unipileMessage.create({
-			data: {
+		const result = await this.db
+			.insert(unipileMessages)
+			.values({
 				...data,
 				message_type: data.message_type || "text",
 				is_read: data.is_read || false,
 				is_outgoing: data.is_outgoing || false,
 				sent_at: data.sent_at || new Date(),
-			},
-		});
+			})
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to create message");
+		}
+		return result[0];
 	}
 
 	/**
 	 * Update a message
 	 */
 	public async update(id: string, data: UpdateUnipileMessageData) {
-		return this.db.unipileMessage.update({
-			where: { id },
-			data: {
+		const result = await this.db
+			.update(unipileMessages)
+			.set({
 				...data,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(eq(unipileMessages.id, id))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error(`Message not found: ${id}`);
+		}
+		return result[0];
 	}
 
 	/**
@@ -93,104 +101,143 @@ export class UnipileMessageService {
 		createData: CreateUnipileMessageData,
 		updateData: UpdateUnipileMessageData,
 	) {
-		return this.db.unipileMessage.upsert({
-			where: {
-				unipile_account_id_external_id: {
-					unipile_account_id: accountId,
-					external_id: externalId,
+		const result = await this.db
+			.insert(unipileMessages)
+			.values({
+				...createData,
+				unipile_account_id: accountId,
+				external_id: externalId,
+			})
+			.onConflictDoUpdate({
+				target: [
+					unipileMessages.unipile_account_id,
+					unipileMessages.external_id,
+				],
+				set: {
+					...updateData,
+					updated_at: new Date(),
 				},
-			},
-			update: {
-				...updateData,
-				updated_at: new Date(),
-			},
-			create: createData,
-		});
+			})
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to upsert message");
+		}
+		return result[0];
 	}
 
 	/**
 	 * Mark message as read
 	 */
 	public async markAsRead(id: string) {
-		return this.db.unipileMessage.update({
-			where: { id },
-			data: {
+		const result = await this.db
+			.update(unipileMessages)
+			.set({
 				is_read: true,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(eq(unipileMessages.id, id))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error(`Message not found: ${id}`);
+		}
+		return result[0];
 	}
 
 	/**
 	 * Mark all messages in a chat as read
 	 */
 	public async markChatAsRead(chatId: string) {
-		return this.db.unipileMessage.updateMany({
-			where: {
-				chat_id: chatId,
-				is_read: false,
-				is_deleted: false,
-			},
-			data: {
+		await this.db
+			.update(unipileMessages)
+			.set({
 				is_read: true,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(
+				and(
+					eq(unipileMessages.chat_id, chatId),
+					eq(unipileMessages.is_read, false),
+					eq(unipileMessages.is_deleted, false),
+				),
+			);
+
+		// Note: Drizzle doesn't return affected count for update operations
+		return { count: 0 }; // Return for compatibility
 	}
 
 	/**
 	 * Delete a message (soft delete)
 	 */
 	public async delete(id: string) {
-		return this.db.unipileMessage.update({
-			where: { id },
-			data: {
+		const result = await this.db
+			.update(unipileMessages)
+			.set({
 				is_deleted: true,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(eq(unipileMessages.id, id))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error(`Message not found: ${id}`);
+		}
+		return result[0];
 	}
 
 	/**
 	 * Get message statistics for an account
 	 */
 	public async getMessageStats(accountId: string) {
-		const total = await this.db.unipileMessage.count({
-			where: {
-				unipile_account_id: accountId,
-				is_deleted: false,
-			},
-		});
-
-		const unread = await db.unipileMessage.count({
-			where: {
-				unipile_account_id: accountId,
-				is_read: false,
-				is_deleted: false,
-			},
-		});
-
-		const sent = await db.unipileMessage.count({
-			where: {
-				unipile_account_id: accountId,
-				is_outgoing: true,
-				is_deleted: false,
-			},
-		});
-
-		const received = await db.unipileMessage.count({
-			where: {
-				unipile_account_id: accountId,
-				is_outgoing: false,
-				is_deleted: false,
-			},
-		});
+		const [totalResult, unreadResult, sentResult, receivedResult] =
+			await Promise.all([
+				this.db
+					.select({ count: count() })
+					.from(unipileMessages)
+					.where(
+						and(
+							eq(unipileMessages.unipile_account_id, accountId),
+							eq(unipileMessages.is_deleted, false),
+						),
+					),
+				this.db
+					.select({ count: count() })
+					.from(unipileMessages)
+					.where(
+						and(
+							eq(unipileMessages.unipile_account_id, accountId),
+							eq(unipileMessages.is_read, false),
+							eq(unipileMessages.is_deleted, false),
+						),
+					),
+				this.db
+					.select({ count: count() })
+					.from(unipileMessages)
+					.where(
+						and(
+							eq(unipileMessages.unipile_account_id, accountId),
+							eq(unipileMessages.is_outgoing, true),
+							eq(unipileMessages.is_deleted, false),
+						),
+					),
+				this.db
+					.select({ count: count() })
+					.from(unipileMessages)
+					.where(
+						and(
+							eq(unipileMessages.unipile_account_id, accountId),
+							eq(unipileMessages.is_outgoing, false),
+							eq(unipileMessages.is_deleted, false),
+						),
+					),
+			]);
 
 		return {
-			total,
-			unread,
-			sent,
-			received,
+			total: totalResult[0]?.count || 0,
+			unread: unreadResult[0]?.count || 0,
+			sent: sentResult[0]?.count || 0,
+			received: receivedResult[0]?.count || 0,
 		};
 	}
 
@@ -198,20 +245,18 @@ export class UnipileMessageService {
 	 * Get unique chat IDs for an account
 	 */
 	public async getChatIds(accountId: string) {
-		const messages = await this.db.unipileMessage.findMany({
-			where: {
-				unipile_account_id: accountId,
-				is_deleted: false,
-				chat_id: {
-					not: null,
-				},
-			},
-			select: {
-				chat_id: true,
-			},
-			distinct: ["chat_id"],
-		});
+		const messages = await this.db
+			.select({ chat_id: unipileMessages.chat_id })
+			.from(unipileMessages)
+			.where(
+				and(
+					eq(unipileMessages.unipile_account_id, accountId),
+					eq(unipileMessages.is_deleted, false),
+				),
+			);
 
-		return messages.map((m) => m.chat_id).filter(Boolean);
+		// Get unique chat IDs and filter out null values
+		const uniqueChatIds = [...new Set(messages.map((m) => m.chat_id))];
+		return uniqueChatIds.filter(Boolean);
 	}
 }

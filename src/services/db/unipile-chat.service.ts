@@ -28,22 +28,21 @@ export type UpdateAttendeeData = Partial<CreateAttendeeData>;
 
 // Chat with various include options
 export type ChatWithAttendees = UnipileChat & {
-	UnipileChatAttendee: UnipileChatAttendee[];
+	unipileChatAttendees: UnipileChatAttendee[];
 };
 
 export type ChatWithMessages = UnipileChat & {
-	UnipileMessage: (typeof unipileMessages.$inferSelect)[];
+	unipileMessages: (typeof unipileMessages.$inferSelect)[];
 };
 
 export type ChatWithDetails = UnipileChat & {
-	UnipileChatAttendee: (UnipileChatAttendee & {
+	unipileChatAttendees: (typeof unipileChatAttendees.$inferSelect & {
 		contact: typeof unipileContacts.$inferSelect | null;
 	})[];
-	UnipileMessage: (typeof unipileMessages.$inferSelect & {
-		UnipileMessageAttachment: (typeof unipileMessageAttachments.$inferSelect)[];
-		unipile_account: typeof unipileAccounts.$inferSelect | null;
+	unipileMessages: (typeof unipileMessages.$inferSelect & {
+		unipileMessageAttachments: (typeof unipileMessageAttachments.$inferSelect)[];
 	})[];
-	unipile_account: typeof unipileAccounts.$inferSelect;
+	unipileAccount: typeof unipileAccounts.$inferSelect;
 };
 
 export type AttendeeWithChat = UnipileChatAttendee & {
@@ -63,7 +62,7 @@ export interface FindChatOptions {
 }
 
 export interface PaginatedChats {
-	chats: UnipileChat[];
+	chats: ChatWithDetails[];
 	nextCursor?: string;
 	hasMore: boolean;
 }
@@ -260,9 +259,6 @@ export class UnipileChatService {
 		options: FindChatOptions = {},
 	): Promise<PaginatedChats> {
 		const {
-			include_attendees = false,
-			include_messages = false,
-			include_account = false,
 			include_deleted = false,
 			limit = 20,
 			cursor,
@@ -292,33 +288,39 @@ export class UnipileChatService {
 			);
 		}
 
-		const chats = await this.drizzleDb
-			.select()
-			.from(unipileChats)
-			.innerJoin(
-				unipileAccounts,
-				eq(unipileChats.unipile_account_id, unipileAccounts.id),
-			)
-			.where(and(...whereConditions))
-			.orderBy(
+		const chats = await this.drizzleDb.query.unipileChats.findMany({
+			where: and(...whereConditions),
+			orderBy:
 				order_direction === "desc"
-					? desc(unipileChats[order_by])
-					: asc(unipileChats[order_by]),
-			)
-			.limit(limit + 1); // Fetch one extra to determine if there are more
+					? desc(unipileChats.last_message_at)
+					: asc(unipileChats.last_message_at),
+			limit: limit + 1,
+			with: {
+				unipileChatAttendees: {
+					with: {
+						contact: true,
+					},
+				},
+				unipileMessages: {
+					with: {
+						unipileMessageAttachments: true,
+					},
+				},
+			},
+		});
 
 		// Determine if there are more results
 		const hasMore = chats.length > limit;
 		const resultChats = hasMore ? chats.slice(0, -1) : chats;
 		const nextCursor = hasMore
-			? resultChats[resultChats.length - 1]?.unipile_chat?.id
+			? resultChats[resultChats.length - 1]?.id
 			: undefined;
 
 		// Extract just the chat data from join results
-		const chatData = resultChats.map((row) => row.unipile_chat);
+		const chatData = resultChats.map((row) => row);
 
 		return {
-			chats: chatData,
+			chats: chatData as ChatWithDetails[],
 			nextCursor,
 			hasMore,
 		};
@@ -561,17 +563,33 @@ export class UnipileChatService {
 
 	/**
 	 * Get chat with full details
+	 *
 	 */
-	async getChatWithDetails(chatId: string): Promise<UnipileChat | null> {
+	async getChatWithDetails(chatId: string): Promise<ChatWithDetails | null> {
 		// TODO: Implement with proper Drizzle relations
 		// For now, return basic chat info
-		const result = await this.drizzleDb
-			.select()
-			.from(unipileChats)
-			.where(eq(unipileChats.id, chatId))
-			.limit(1);
+		const result = await this.drizzleDb.query.unipileChats.findFirst({
+			where: eq(unipileChats.id, chatId),
+			with: {
+				unipileChatAttendees: {
+					where: (table, { eq }) => eq(table.is_deleted, false),
+					with: {
+						contact: true,
+					},
+				},
+				unipileMessages: {
+					where: (table, { eq }) => eq(table.is_deleted, false),
+					with: {
+						unipileMessageAttachments: {
+							where: (table, { eq }) => eq(table.is_deleted, false),
+						},
+					},
+				},
+				unipileAccount: true,
+			},
+		});
 
-		return result[0] || null;
+		return result || null;
 	}
 
 	/**

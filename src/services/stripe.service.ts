@@ -104,7 +104,7 @@ export class StripeService {
 			paymentMethodId?: string;
 			cancelAtPeriodEnd?: boolean;
 		},
-	): Promise<Stripe.Subscription> {
+	): Promise<Stripe.Response<Stripe.Subscription>> {
 		const updateData: Stripe.SubscriptionUpdateParams = {};
 
 		if (data.priceId) {

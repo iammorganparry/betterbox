@@ -1,14 +1,12 @@
-import type { Prisma } from "generated/prisma";
+import type { unipileContacts } from "~/db/schema";
 import type { UnipileAccount } from "./unipile-account";
 
-export type UnipileContact = Prisma.UnipileContactGetPayload<true>;
+export type UnipileContact = typeof unipileContacts.$inferSelect;
 
-export type UnipileContactWithAccount = Prisma.UnipileContactGetPayload<{
-	include: {
-		unipile_account: true;
-	};
-}>;
+export type UnipileContactWithAccount = UnipileContact & {
+	unipile_account: UnipileAccount;
+};
 
-export type UnipileContactCreateInput = Prisma.UnipileContactCreateInput;
+export type UnipileContactCreateInput = UnipileContact;
 
-export type UnipileContactUpdateInput = Prisma.UnipileContactUpdateInput;
+export type UnipileContactUpdateInput = UnipileContact;

@@ -1,10 +1,17 @@
 import { eq, and, desc, asc, count, inArray } from "drizzle-orm";
 import type { db } from "~/db";
-import { chatFolders, chatFolderAssignments, unipileChats } from "~/db/schema";
+import {
+	chatFolders,
+	chatFolderAssignments,
+	type unipileChats,
+} from "~/db/schema";
+import type { ChatWithDetails } from "./unipile-chat.service";
 
 // Use Drizzle's inferred types
 export type ChatFolder = typeof chatFolders.$inferSelect;
-export type ChatFolderAssignment = typeof chatFolderAssignments.$inferSelect;
+export type ChatFolderAssignment = typeof chatFolderAssignments.$inferSelect & {
+	chat: ChatWithDetails;
+};
 export type CreateChatFolderData = typeof chatFolders.$inferInsert;
 export type UpdateChatFolderData = Partial<CreateChatFolderData>;
 export type CreateChatFolderAssignmentData =
@@ -187,16 +194,14 @@ export class ChatFolderService {
 		assignedById: string,
 	): Promise<ChatFolderAssignment> {
 		// First, check if an assignment already exists (including soft-deleted ones)
-		const [existingAssignment] = await this.drizzleDb
-			.select()
-			.from(chatFolderAssignments)
-			.where(
-				and(
-					eq(chatFolderAssignments.chat_id, chatId),
-					eq(chatFolderAssignments.folder_id, folderId),
-				),
-			)
-			.limit(1);
+		const existingAssignment =
+			await this.drizzleDb.query.chatFolderAssignments.findFirst({
+				where: (table, { eq }) =>
+					and(eq(table.chat_id, chatId), eq(table.folder_id, folderId)),
+				with: {
+					chat: true,
+				},
+			});
 
 		if (!existingAssignment) {
 			throw new Error("Assignment not found");
@@ -235,7 +240,33 @@ export class ChatFolderService {
 			throw new Error("Failed to assign chat to folder");
 		}
 
-		return result;
+		const returnedResult =
+			await this.drizzleDb.query.chatFolderAssignments.findFirst({
+				where: (table, { eq }) => eq(table.id, result.id),
+				with: {
+					chat: {
+						with: {
+							unipileChatAttendees: {
+								with: {
+									contact: true,
+								},
+							},
+							unipileMessages: {
+								with: {
+									unipileMessageAttachments: true,
+								},
+							},
+							unipileAccount: true,
+						},
+					},
+				},
+			});
+
+		if (!returnedResult) {
+			throw new Error("Failed to assign chat to folder");
+		}
+
+		return returnedResult;
 	}
 
 	/**
@@ -245,17 +276,14 @@ export class ChatFolderService {
 		chatId: string,
 		folderId: string,
 	): Promise<ChatFolderAssignment> {
-		const [assignment] = await this.drizzleDb
-			.select()
-			.from(chatFolderAssignments)
-			.where(
-				and(
-					eq(chatFolderAssignments.chat_id, chatId),
-					eq(chatFolderAssignments.folder_id, folderId),
-					eq(chatFolderAssignments.is_deleted, false),
-				),
-			)
-			.limit(1);
+		const assignment =
+			await this.drizzleDb.query.chatFolderAssignments.findFirst({
+				where: (table, { eq }) =>
+					and(eq(table.chat_id, chatId), eq(table.folder_id, folderId)),
+				with: {
+					chat: true,
+				},
+			});
 
 		if (!assignment) {
 			throw new Error("Assignment not found");
@@ -270,61 +298,105 @@ export class ChatFolderService {
 			.where(eq(chatFolderAssignments.id, assignment.id))
 			.returning();
 
-		if (!result[0]) {
+		const resultId = result[0]?.id;
+
+		if (!resultId) {
 			throw new Error("Failed to remove chat from folder");
 		}
 
-		return result[0];
+		const returnedResult =
+			await this.drizzleDb.query.chatFolderAssignments.findFirst({
+				where: (table, { eq }) => eq(table.id, resultId),
+				with: {
+					chat: {
+						with: {
+							unipileChatAttendees: {
+								with: {
+									contact: true,
+								},
+							},
+							unipileMessages: {
+								with: {
+									unipileMessageAttachments: true,
+								},
+							},
+							unipileAccount: true,
+						},
+					},
+				},
+			});
+
+		if (!returnedResult) {
+			throw new Error("Failed to remove chat from folder");
+		}
+
+		return returnedResult;
 	}
 
 	/**
 	 * Get all folder assignments for a chat
 	 */
 	async getChatFolders(chatId: string): Promise<ChatFolderAssignment[]> {
-		const result = await this.drizzleDb
-			.select()
-			.from(chatFolderAssignments)
-			.where(
-				and(
-					eq(chatFolderAssignments.chat_id, chatId),
-					eq(chatFolderAssignments.is_deleted, false),
-				),
-			)
-			.innerJoin(
-				chatFolders,
-				eq(chatFolderAssignments.folder_id, chatFolders.id),
-			);
+		const result = await this.drizzleDb.query.chatFolderAssignments.findMany({
+			where: (table, { eq }) =>
+				and(eq(table.chat_id, chatId), eq(table.is_deleted, false)),
+			with: {
+				chat: {
+					with: {
+						unipileChatAttendees: {
+							with: {
+								contact: true,
+							},
+						},
+						unipileMessages: {
+							with: {
+								unipileMessageAttachments: true,
+							},
+						},
+						unipileAccount: true,
+					},
+				},
+			},
+		});
 
 		if (!result) {
 			throw new Error("Failed to get chat folders");
 		}
 
-		return result.map((row) => row.chat_folder_assignment);
+		return result;
 	}
 
 	/**
 	 * Get all chats in a folder
 	 */
 	async getChatsInFolder(folderId: string): Promise<ChatFolderAssignment[]> {
-		const result = await this.drizzleDb
-			.select()
-			.from(chatFolderAssignments)
-			.where(
-				and(
-					eq(chatFolderAssignments.folder_id, folderId),
-					eq(chatFolderAssignments.is_deleted, false),
-				),
-			)
-			.innerJoin(
-				unipileChats,
-				eq(chatFolderAssignments.chat_id, unipileChats.id),
-			);
+		const result = await this.drizzleDb.query.chatFolderAssignments.findMany({
+			where: (table, { eq }) =>
+				and(eq(table.folder_id, folderId), eq(table.is_deleted, false)),
+			with: {
+				chat: {
+					with: {
+						unipileChatAttendees: {
+							with: {
+								contact: true,
+							},
+						},
+						unipileMessages: {
+							with: {
+								unipileMessageAttachments: true,
+							},
+						},
+						unipileAccount: true,
+					},
+				},
+			},
+		});
 
 		if (!result) {
 			throw new Error("Failed to get chats in folder");
 		}
 
-		return result.map((row) => row.chat_folder_assignment);
+		return result;
 	}
 
 	/**
@@ -431,15 +503,6 @@ export class ChatFolderService {
 		}
 
 		// Return all current assignments
-		return await this.drizzleDb
-			.select()
-			.from(chatFolderAssignments)
-			.where(
-				and(
-					inArray(chatFolderAssignments.chat_id, chatIds),
-					eq(chatFolderAssignments.folder_id, folderId),
-					eq(chatFolderAssignments.is_deleted, false),
-				),
-			);
+		return await this.getChatsInFolder(folderId);
 	}
 }

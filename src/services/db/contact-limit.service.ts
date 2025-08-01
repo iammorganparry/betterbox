@@ -12,6 +12,7 @@ import {
 	getContactLimitForPlan,
 	type SubscriptionPlan,
 } from "~/config/contact-limits.config";
+import type { ChatWithDetails } from "./unipile-chat.service";
 
 export interface ContactLimitStatus {
 	limit: number;
@@ -19,16 +20,6 @@ export interface ContactLimitStatus {
 	isExceeded: boolean;
 	remainingContacts: number;
 }
-
-// Drizzle-based types for chat with includes
-export type ChatWithDetails = typeof unipileChats.$inferSelect & {
-	UnipileChatAttendee: (typeof unipileChatAttendees.$inferSelect & {
-		contact: typeof unipileContacts.$inferSelect | null;
-	})[];
-	UnipileMessage: (typeof unipileMessages.$inferSelect & {
-		unipile_account: typeof unipileAccounts.$inferSelect | null;
-	})[];
-};
 
 export class ContactLimitService {
 	constructor(private drizzleDb: typeof db) {}
@@ -126,7 +117,7 @@ export class ContactLimitService {
 		return {
 			...chat,
 			name: "Premium Contact",
-			UnipileChatAttendee: chat.UnipileChatAttendee?.map((attendee) => ({
+			unipileChatAttendees: chat.unipileChatAttendees?.map((attendee) => ({
 				...attendee,
 				contact: attendee.contact
 					? {
@@ -143,7 +134,7 @@ export class ContactLimitService {
 					: attendee.contact,
 			})),
 			// Obfuscate recent messages
-			UnipileMessage: chat.UnipileMessage?.map((message) => ({
+			unipileMessages: chat.unipileMessages?.map((message) => ({
 				...message,
 				content: "Upgrade to view messages from premium contacts",
 				sender_urn: null,
@@ -222,7 +213,7 @@ export class ContactLimitService {
 	 */
 	private getChatContactId(chat: ChatWithDetails): string | null {
 		// For direct chats, get the non-self attendee
-		const nonSelfAttendee = chat.UnipileChatAttendee?.find(
+		const nonSelfAttendee = chat.unipileChatAttendees?.find(
 			(attendee) => attendee.is_self === 0,
 		);
 

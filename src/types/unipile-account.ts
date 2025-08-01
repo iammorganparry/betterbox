@@ -1,4 +1,8 @@
-import { unipileAccounts, users, unipileAccountStatusEnum } from '~/db/schema';
+import type {
+	unipileAccounts,
+	users,
+	unipileAccountStatusEnum,
+} from "~/db/schema";
 
 export type UnipileAccount = typeof unipileAccounts.$inferSelect;
 
@@ -18,4 +22,5 @@ export type UnipileProvider =
 	| "messenger"
 	| "twitter";
 
-export type UnipileAccountStatus = typeof unipileAccountStatusEnum.enumValues[number];
+export type UnipileAccountStatus =
+	(typeof unipileAccountStatusEnum.enumValues)[number];

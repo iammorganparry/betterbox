@@ -1,23 +1,26 @@
 import { db } from "~/db";
+import { users } from "./schema";
 
 async function main() {
 	console.log("🌱 Starting database seeding...");
 
 	// Create the user
-	const user = await db.user.upsert({
-		where: { id: "user_30Ah4rGa8g3GnLpXGLnHXyuzVew" },
-		update: {
+	const user = await db
+		.insert(users)
+		.values({
+			id: "user_30elKhSkkHBlgx6B5jROzXiHtXT",
 			email: "morgan@trigify.io",
 			first_name: "Morgan",
 			last_name: "Parry",
-		},
-		create: {
-			id: "user_30Ah4rGa8g3GnLpXGLnHXyuzVew",
-			email: "morgan@trigify.io",
-			first_name: "Morgan",
-			last_name: "Parry",
-		},
-	});
+		})
+		.onConflictDoUpdate({
+			target: [users.id],
+			set: {
+				email: "morgan@trigify.io",
+				first_name: "Morgan",
+				last_name: "Parry",
+			},
+		});
 
 	console.log("✅ User created/updated:", user);
 	console.log("🌱 Database seeding completed!");
@@ -25,10 +28,10 @@ async function main() {
 
 main()
 	.then(async () => {
-		await db.$disconnect();
+		await db.$client.end();
 	})
 	.catch(async (e) => {
 		console.error("❌ Error during seeding:", e);
-		await db.$disconnect();
+		await db.$client.end();
 		process.exit(1);
 	});

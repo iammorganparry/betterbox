@@ -1,17 +1,10 @@
 import { inngest } from "../inngest";
 import { createUnipileService } from "../unipile/unipile.service";
+
 import type {
-	Prisma,
-	UnipileAccountStatus,
-	UnipileContentType,
-} from "../../../generated/prisma";
-import type {
-	UnipileApiResponse,
-	UnipileApiChat,
 	UnipileApiMessage,
 	UnipileApiAccountStatus,
 	UnipileHistoricalSyncRequest,
-	UnipileApiParticipant,
 	UnipileApiChatAttendee,
 	UnipileApiUserProfile,
 } from "~/types/unipile-api";
@@ -19,12 +12,9 @@ import type { AccountStatusEvent } from "~/types/realtime";
 import { getUserChannelId } from "~/types/realtime";
 import { getCurrentSyncConfig, logSyncConfig } from "~/config/sync.config";
 
-// Import our new service classes
-import { UnipileAccountService } from "../db/unipile-account.service";
-import { UnipileChatService } from "../db/unipile-chat.service";
-import { UnipileMessageService } from "../db/unipile-message.service";
 import type { UnipileContactService } from "../db/unipile-contact.service";
 import { env } from "~/env";
+import { unipileProfileViews } from "~/db/schema";
 
 /**
  * Helper function to safely fetch complete profile data for a contact
@@ -325,7 +315,7 @@ export const unipileAccountStatusUpdate = inngest.createFunction(
 				user.id,
 				account_id,
 				provider,
-				{ status: status as UnipileAccountStatus },
+				{ status: status as "error" | "connected" | "disconnected" },
 			);
 		});
 
@@ -402,27 +392,17 @@ export const unipileNewMessage = inngest.createFunction(
 
 		// Upsert the message
 		const savedMessage = await step.run("upsert-message", async () => {
-			return await messageService.upsertMessage(
-				unipileAccount.id,
-				message.id,
-				{
-					content: message.text || message.content,
-					is_read: message.is_read || false,
-				},
-				{
-					...(internalChat
-						? { chat: { connect: { id: internalChat.id } } }
-						: {}), // Link to internal chat if found
-					external_chat_id: chat_id, // Store external API chat ID
-					sender_id: sender?.id,
-					recipient_id: recipient?.id,
-					message_type: message.type || "text",
-					content: message.text || message.content,
-					is_read: message.is_read || false,
-					is_outgoing: isOutgoing,
-					sent_at: timestamp ? new Date(timestamp) : new Date(),
-				},
-			);
+			return await messageService.upsertMessage(unipileAccount.id, message.id, {
+				...(internalChat ? { chat_id: internalChat.id } : {}), // Link to internal chat if found
+				external_chat_id: chat_id, // Store external API chat ID
+				sender_id: sender?.id,
+				recipient_id: recipient?.id,
+				message_type: message.type || "text",
+				content: message.text || message.content,
+				is_read: message.is_read || false,
+				is_outgoing: isOutgoing,
+				sent_at: timestamp ? new Date(timestamp) : new Date(),
+			});
 		});
 
 		// If this is a new contact, create enriched contact using profile data
@@ -498,9 +478,10 @@ export const unipileProfileView = inngest.createFunction(
 
 		// Create the profile view record (keeping raw Prisma for this specific model)
 		const profileView = await step.run("create-profile-view", async () => {
-			const { db } = await import("~/server/db");
-			return await db.unipileProfileView.create({
-				data: {
+			return await services.db
+				.insert(unipileProfileViews)
+				.values({
+					...data,
 					user_id: unipileAccount.user_id,
 					viewer_profile_id: viewer?.id,
 					viewer_name: viewer?.display_name || viewer?.name,
@@ -508,8 +489,8 @@ export const unipileProfileView = inngest.createFunction(
 					viewer_image_url: viewer?.profile_picture_url || viewer?.avatar_url,
 					viewed_at: viewed_at ? new Date(viewed_at) : new Date(),
 					provider,
-				},
-			});
+				})
+				.returning();
 		});
 
 		// Also upsert the viewer as a contact using enriched profile data
@@ -560,6 +541,7 @@ export const unipileProfileView = inngest.createFunction(
 	},
 );
 
+import type { unipileContentTypeEnum } from "~/db/schema";
 /**
  * Enhanced comprehensive inbox sync from Unipile API
  * This function syncs complete LinkedIn inbox including:
@@ -753,7 +735,8 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 										organization_id: chatData.organization_id,
 										mailbox_id: chatData.mailbox_id,
 										mailbox_name: chatData.mailbox_name,
-										content_type: chatData.content_type as UnipileContentType,
+										content_type:
+											chatData.content_type as (typeof unipileContentTypeEnum.enumValues)[number],
 										disabled_features: chatData.disabledFeatures
 											? chatData.disabledFeatures
 											: undefined,
@@ -850,21 +833,9 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 											const message = await unipileMessageService.upsertMessage(
 												unipileAccount.id,
 												messageData.id,
+
 												{
-													content: messageData.text || undefined,
-													is_read: messageData.seen === 1,
-													metadata:
-														messageData.quoted || messageData.reactions
-															? ({
-																	quoted: messageData.quoted,
-																	reactions: messageData.reactions,
-																	subject: messageData.subject,
-																	reply_to: messageData.reply_to,
-																} as Prisma.InputJsonValue)
-															: undefined,
-												},
-												{
-													chat: { connect: { id: chat.id } }, // Link to internal chat record
+													chat_id: chat.id, // Link to internal chat record
 													external_chat_id: chatData.id, // Store external API chat ID
 													sender_id: messageData.sender_id || undefined,
 													recipient_id: undefined, // Not available in new API structure
@@ -892,12 +863,12 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 													parent: messageData.parent,
 													metadata:
 														messageData.quoted || messageData.reactions
-															? ({
+															? {
 																	quoted: messageData.quoted,
 																	reactions: messageData.reactions,
 																	subject: messageData.subject,
 																	reply_to: messageData.reply_to,
-																} as Prisma.InputJsonValue)
+																}
 															: undefined,
 												},
 											);
@@ -1186,14 +1157,10 @@ export const unipileBulkMessageSync = inngest.createFunction(
 							const message = await messageService.upsertMessage(
 								unipileAccount.id,
 								messageData.id,
+
 								{
-									content: messageData.text || undefined,
-									is_read: messageData.seen === 1,
-								},
-								{
-									...(internalChat
-										? { chat: { connect: { id: internalChat.id } } }
-										: {}), // Link to internal chat if found
+									...(internalChat ? { chat_id: internalChat.id } : {}), // Link to internal chat if found
+									chat_id: internalChat?.id, // Link to internal chat record
 									external_chat_id: messageData.chat_id, // Store external API chat ID
 									sender_id: messageData.sender_id,
 									recipient_id: undefined, // Not available in new API structure

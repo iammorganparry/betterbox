@@ -36,7 +36,7 @@ export const inboxRouter = createTRPCRouter({
 				// Apply contact limits and obfuscation
 				// Type assertion: we know the chats include the required relations because
 				// we set include_attendees: true and include_messages: true
-				const chatsWithDetails = result.chats as any;
+				const chatsWithDetails = result.chats;
 				const filteredChats =
 					await ctx.services.contactLimitService.applyContactLimitsToChats(
 						ctx.userId,
@@ -83,7 +83,7 @@ export const inboxRouter = createTRPCRouter({
 				}
 
 				// Verify the chat belongs to the current user
-				if (chatDetails.unipile_account.user_id !== ctx.userId) {
+				if (chatDetails.unipileAccount.user_id !== ctx.userId) {
 					throw new TRPCError({
 						code: "FORBIDDEN",
 						message: "You can only view your own chats",
@@ -107,7 +107,7 @@ export const inboxRouter = createTRPCRouter({
 					const filteredChat = filteredChats[0];
 
 					// If the chat is obfuscated (contact name became "Premium Contact"), deny access
-					const isObfuscated = filteredChat?.UnipileChatAttendee?.some(
+					const isObfuscated = filteredChat?.unipileChatAttendees?.some(
 						(attendee) => attendee.contact?.full_name === "Premium Contact",
 					);
 
@@ -161,7 +161,6 @@ export const inboxRouter = createTRPCRouter({
 				const contacts =
 					await ctx.services.unipileContactService.getContactsByUser(
 						ctx.userId,
-						undefined,
 						{
 							limit: input.limit,
 							order_by: "last_interaction",
@@ -229,7 +228,7 @@ export const inboxRouter = createTRPCRouter({
 				}
 
 				// Verify the message belongs to the current user
-				if (message.unipile_account.user_id !== ctx.userId) {
+				if (message.unipileAccount.user_id !== ctx.userId) {
 					throw new TRPCError({
 						code: "FORBIDDEN",
 						message: "You can only delete your own messages",
@@ -278,7 +277,7 @@ export const inboxRouter = createTRPCRouter({
 				}
 
 				// Verify the chat belongs to the current user
-				if (chatDetails.unipile_account.user_id !== ctx.userId) {
+				if (chatDetails.unipileAccount.user_id !== ctx.userId) {
 					throw new TRPCError({
 						code: "FORBIDDEN",
 						message: "You can only view your own chats",
@@ -302,7 +301,7 @@ export const inboxRouter = createTRPCRouter({
 					const filteredChat = filteredChats[0];
 
 					// If the chat is obfuscated (contact name became "Premium Contact"), deny access
-					const isObfuscated = filteredChat?.UnipileChatAttendee?.some(
+					const isObfuscated = filteredChat?.unipileChatAttendees?.some(
 						(attendee) => attendee.contact?.full_name === "Premium Contact",
 					);
 
@@ -345,20 +344,6 @@ export const inboxRouter = createTRPCRouter({
 					input.chatId,
 				);
 
-				console.log("📊 Chat details retrieved:", {
-					found: !!chat,
-					externalId: chat?.external_id,
-					unreadCount: chat?.unread_count,
-					accountId: chat?.unipile_account?.account_id,
-					userId: chat?.unipile_account?.user_id,
-					accountProvider: chat?.unipile_account?.provider,
-					accountStatus: chat?.unipile_account?.status,
-					chatProvider: chat?.provider,
-					chatName: chat?.name,
-					chatCreatedAt: chat?.created_at,
-					chatUpdatedAt: chat?.updated_at,
-				});
-
 				if (!chat) {
 					console.error("❌ Chat not found for ID:", input.chatId);
 					throw new TRPCError({
@@ -368,10 +353,10 @@ export const inboxRouter = createTRPCRouter({
 				}
 
 				// Verify the chat belongs to the current user
-				if (chat.unipile_account.user_id !== ctx.userId) {
+				if (chat.unipileAccount.user_id !== ctx.userId) {
 					console.error(
 						"❌ Permission denied. Chat belongs to user:",
-						chat.unipile_account.user_id,
+						chat.unipileAccount.user_id,
 						"but current user is:",
 						ctx.userId,
 					);
@@ -398,7 +383,7 @@ export const inboxRouter = createTRPCRouter({
 					const filteredChat = filteredChats[0];
 
 					// If the chat is obfuscated (contact name became "Premium Contact"), deny marking as read
-					const isObfuscated = filteredChat?.UnipileChatAttendee?.some(
+					const isObfuscated = filteredChat?.unipileChatAttendees?.some(
 						(attendee) => attendee.contact?.full_name === "Premium Contact",
 					);
 
@@ -435,13 +420,13 @@ export const inboxRouter = createTRPCRouter({
 					externalId: chat.external_id,
 					action: "setReadStatus",
 					value: true,
-					accountId: chat.unipile_account.account_id,
+					accountId: chat.unipileAccount.account_id,
 				});
 
 				const unipileResponse = await unipileService.patchChat(
 					chat.external_id, // Use external chat ID for Unipile
 					{ action: "setReadStatus", value: true }, // Use correct action name
-					chat.unipile_account.account_id, // Use the account_id from the database
+					chat.unipileAccount.account_id, // Use the account_id from the database
 				);
 
 				console.log("📥 Unipile response received:", {
@@ -528,7 +513,7 @@ export const inboxRouter = createTRPCRouter({
 				}
 
 				// Verify the chat belongs to the current user
-				if (chat.unipile_account.user_id !== ctx.userId) {
+				if (chat.unipileAccount.user_id !== ctx.userId) {
 					throw new TRPCError({
 						code: "FORBIDDEN",
 						message: "You can only delete your own chats",
@@ -594,7 +579,7 @@ export const inboxRouter = createTRPCRouter({
 				}
 
 				// Verify the chat belongs to the current user
-				if (chat.unipile_account.user_id !== ctx.userId) {
+				if (chat.unipileAccount.user_id !== ctx.userId) {
 					throw new TRPCError({
 						code: "FORBIDDEN",
 						message: "You can only send messages to your own chats",
@@ -618,7 +603,7 @@ export const inboxRouter = createTRPCRouter({
 					const filteredChat = filteredChats[0];
 
 					// If the chat is obfuscated (contact name became "Premium Contact"), deny sending messages
-					const isObfuscated = filteredChat?.UnipileChatAttendee?.some(
+					const isObfuscated = filteredChat?.unipileChatAttendees?.some(
 						(attendee) => attendee.contact?.full_name === "Premium Contact",
 					);
 
@@ -652,7 +637,7 @@ export const inboxRouter = createTRPCRouter({
 						text: input.content,
 						attachments: input.attachments,
 					},
-					chat.unipile_account.account_id, // Use the account_id from the database
+					chat.unipileAccount.account_id, // Use the account_id from the database
 				);
 
 				if (sendMessageResponse.status === "failed") {
@@ -672,18 +657,14 @@ export const inboxRouter = createTRPCRouter({
 
 				const savedMessage =
 					await ctx.services.unipileMessageService.upsertMessage(
-						chat.unipile_account.id,
+						chat.unipileAccount.id,
 						messageId,
 						{
-							content: input.content,
-							is_read: true, // User's own message is considered read
-						},
-						{
-							chat: { connect: { id: chat.id } },
+							chat_id: chat.id,
 							external_chat_id: chat.external_id,
 							sender_id:
 								sendMessageResponse.message?.sender_id ||
-								chat.unipile_account.account_id,
+								chat.unipileAccount.account_id,
 							message_type:
 								sendMessageResponse.message?.message_type?.toLowerCase() ||
 								"text",
@@ -851,7 +832,7 @@ export const inboxRouter = createTRPCRouter({
 					});
 				}
 
-				if (chat.unipile_account.user_id !== ctx.userId) {
+				if (chat.unipileAccount.user_id !== ctx.userId) {
 					throw new TRPCError({
 						code: "FORBIDDEN",
 						message: "You can only assign your own chats",
@@ -955,10 +936,7 @@ export const inboxRouter = createTRPCRouter({
 					await ctx.services.chatFolderService.getChatsInFolder(input.folderId);
 
 				// Extract chats from folder assignments (with type assertion for included data)
-				const chats = folderAssignments.map(
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					(assignment) => (assignment as any).chat,
-				);
+				const chats = folderAssignments.map((assignment) => assignment.chat);
 
 				// Apply contact limits and obfuscation to the chats
 				const filteredChats =
@@ -1014,7 +992,7 @@ export const inboxRouter = createTRPCRouter({
 					});
 				}
 
-				if (chat.unipile_account.user_id !== ctx.userId) {
+				if (chat.unipileAccount.user_id !== ctx.userId) {
 					throw new TRPCError({
 						code: "FORBIDDEN",
 						message: "You can only view your own chats",

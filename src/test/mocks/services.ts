@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { createMockDrizzleDb, type MockDrizzleDb } from "./drizzle";
+import drizzleMock from "../setup";
 
 // Mock Unipile service
 export const createMockUnipileService = () => ({
@@ -52,8 +52,8 @@ export const createMockContactLimitService = () => ({
 });
 
 // Create Drizzle-based service mocks
-export const createMockDrizzleServices = (mockDb?: MockDrizzleDb) => {
-	const db = mockDb || createMockDrizzleDb();
+export const createMockDrizzleServices = (mockDb?: typeof drizzleMock) => {
+	const db = mockDb || drizzleMock;
 
 	return {
 		// Import services dynamically to avoid circular dependencies
@@ -110,11 +110,14 @@ export const createMockDrizzleServices = (mockDb?: MockDrizzleDb) => {
 
 		SubscriptionService: class {
 			constructor(public drizzleDb = db) {}
-			getSubscriptionByUserId = vi.fn();
-			createSubscription = vi.fn();
+			getUserSubscription = vi.fn();
+			createOrUpdateSubscription = vi.fn();
+			createGoldTrial = vi.fn();
 			updateSubscription = vi.fn();
-			deleteSubscription = vi.fn();
+			addPaymentMethod = vi.fn();
+			getPaymentMethods = vi.fn();
 			getActiveSubscriptions = vi.fn();
+			deleteSubscription = vi.fn();
 		},
 
 		UnipileContactService: class {
@@ -161,9 +164,10 @@ export const createMockDrizzleServices = (mockDb?: MockDrizzleDb) => {
 			constructor(public drizzleDb = db) {}
 			create = vi.fn();
 			findById = vi.fn();
+			findByClerkId = vi.fn();
+			findByEmail = vi.fn();
 			update = vi.fn();
 			delete = vi.fn();
-			list = vi.fn();
 		},
 	};
 };
@@ -190,13 +194,13 @@ export const mockChatData = {
 	unread_count: 2,
 	provider: "linkedin",
 	last_message_at: new Date("2024-01-01T12:00:00Z"),
-	unipile_account: {
+	unipileAccount: {
 		id: "account-123",
 		user_id: "test-user-123",
 		account_id: "linkedin-account-123",
 		provider: "linkedin",
 	},
-	UnipileChatAttendee: [
+	unipileChatAttendees: [
 		{
 			id: "attendee-1",
 			is_self: 0,
@@ -210,6 +214,7 @@ export const mockChatData = {
 			},
 		},
 	],
+	unipileMessages: [],
 };
 
 export const mockMessageData = {
@@ -283,16 +288,3 @@ export const mockEnvModule = () => {
 
 	return mockEnv;
 };
-
-// Export Drizzle mock utilities for convenience
-export {
-	createMockDrizzleDb,
-	createMockSelectQueryBuilder,
-	createMockInsertQueryBuilder,
-	createMockUpdateQueryBuilder,
-	createMockDeleteQueryBuilder,
-	mockDrizzleData,
-	createMockDbWithData,
-	createMockDbWithSuccessfulWrites,
-	type MockDrizzleDb,
-} from "./drizzle";

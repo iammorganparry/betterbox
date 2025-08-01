@@ -1,7 +1,7 @@
 import { inngest } from "~/services/inngest";
 import { env } from "~/env";
 import type { UnipileProvider } from "~/types/unipile-account";
-import type { PrismaClient } from "generated/prisma";
+import type { Database } from "~/db";
 
 export interface TriggerHistoricalSyncData {
 	user_id: string;
@@ -11,7 +11,7 @@ export interface TriggerHistoricalSyncData {
 }
 
 export class HistoricalSyncService {
-	constructor(private readonly db: PrismaClient) {}
+	constructor(private readonly db: Database) {}
 	/**
 	 * Trigger historical message sync for a user's Unipile account
 	 * Call this after a user successfully connects their social account

@@ -48,8 +48,13 @@ export type MessageWithAccount = UnipileMessage & {
 	unipile_account: typeof unipileAccounts.$inferSelect;
 };
 
+export type MessageWithAccountAndAttachments = UnipileMessage & {
+	unipileAccount: typeof unipileAccounts.$inferSelect;
+	unipileMessageAttachments: UnipileMessageAttachment[];
+};
+
 export type MessageWithDetails = UnipileMessage & {
-	UnipileMessageAttachment: UnipileMessageAttachment[];
+	unipileMessageAttachment: UnipileMessageAttachment[];
 	chat: typeof unipileChats.$inferSelect & {
 		UnipileChatAttendee: (typeof unipileChatAttendees.$inferSelect)[];
 	};
@@ -107,20 +112,18 @@ export class UnipileMessageService {
 	async upsertMessage(
 		unipileAccountId: string,
 		externalId: string,
-		updateData: Partial<UpdateMessageData>,
-		createData?: Partial<CreateMessageData>,
+		data: Partial<UpdateMessageData>,
 	): Promise<UnipileMessage> {
 		const result = await this.drizzleDb
 			.insert(unipileMessages)
 			.values({
-				...updateData,
+				...data,
 				updated_at: new Date(),
 				unipile_account_id: unipileAccountId,
 				external_id: externalId,
 				is_read: false,
 				is_outgoing: false,
 				message_type: "text",
-				...createData,
 			})
 			.onConflictDoUpdate({
 				target: [
@@ -128,7 +131,7 @@ export class UnipileMessageService {
 					unipileMessages.external_id,
 				],
 				set: {
-					...updateData,
+					...data,
 					updated_at: new Date(),
 				},
 			})
@@ -708,15 +711,17 @@ export class UnipileMessageService {
 	 */
 	async getMessageWithDetails(
 		messageId: string,
-	): Promise<UnipileMessage | null> {
+	): Promise<MessageWithAccountAndAttachments | null> {
 		// TODO: Implement proper relational queries using Drizzle's query API for full MessageWithDetails
-		const result = await this.drizzleDb
-			.select()
-			.from(unipileMessages)
-			.where(eq(unipileMessages.id, messageId))
-			.limit(1);
+		const result = await this.drizzleDb.query.unipileMessages.findFirst({
+			where: eq(unipileMessages.id, messageId),
+			with: {
+				unipileMessageAttachments: true,
+				unipileAccount: true,
+			},
+		});
 
-		return result[0] || null;
+		return result || null;
 	}
 
 	/**

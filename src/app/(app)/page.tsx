@@ -7,16 +7,11 @@ import {
   UserButton,
 } from "@clerk/nextjs";
 
-import { LatestPost } from "~/app/_components/post";
 import { HydrateClient, api } from "~/trpc/server";
 import { AppHeader } from "~/components/app-header";
 import { SidebarInset } from "~/components/ui/sidebar";
 
 export default async function Home() {
-  const hello = await api.post.hello({ text: "from tRPC" });
-
-  void api.post.getLatest.prefetch();
-
   return (
     <SidebarInset>
       <AppHeader />
@@ -86,8 +81,6 @@ export default async function Home() {
                 update based on the route
               </p>
             </div>
-
-            <LatestPost />
           </div>
         </main>
       </HydrateClient>

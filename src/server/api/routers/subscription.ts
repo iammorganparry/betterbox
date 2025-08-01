@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure, publicProcedure } from "~/server/api/trpc";
+import {
+	createTRPCRouter,
+	protectedProcedure,
+	publicProcedure,
+} from "~/server/api/trpc";
 import { getAllPlanLimits } from "~/config/contact-limits.config";
 
 // TODO: This router will work after running the Prisma migration and updating UserService
@@ -32,11 +36,11 @@ export const subscriptionRouter = createTRPCRouter({
 			const customer = await stripeService.createOrGetCustomer({
 				email: input.email,
 				name: input.name,
-				userId: ctx.userId!,
+				userId: ctx.userId,
 			});
 
 			// Update user with Stripe customer ID
-			await userService.update(ctx.userId!, {
+			await userService.update(ctx.userId, {
 				stripe_customer_id: customer.id,
 			});
 
@@ -64,13 +68,13 @@ export const subscriptionRouter = createTRPCRouter({
 			const { subscriptionService, stripeService, userService } = ctx.services;
 
 			// Get user's Stripe customer ID
-			const user = await userService.findByClerkId(ctx.userId!);
+			const user = await userService.findByClerkId(ctx.userId);
 			if (!user?.stripe_customer_id) {
 				throw new Error("User must have a Stripe customer ID");
 			}
 
 			// Create 7-day Gold trial first
-			const goldTrial = await subscriptionService.createGoldTrial(ctx.userId!);
+			const goldTrial = await subscriptionService.createGoldTrial(ctx.userId);
 
 			// Map plan and billing to Stripe price IDs (you'll need to create these in Stripe)
 			const priceMapping = {
@@ -107,10 +111,12 @@ export const subscriptionRouter = createTRPCRouter({
 					plan: input.plan,
 					stripeSubscriptionId: stripeSubscription.id,
 					currentPeriodStart: new Date(
-						(stripeSubscription as any).current_period_start * 1000,
+						// @ts-expect-error - Stripe subscription type is not correct
+						stripeSubscription.current_period_start * 1000,
 					),
 					currentPeriodEnd: new Date(
-						(stripeSubscription as any).current_period_end * 1000,
+						// @ts-expect-error - Stripe subscription type is not correct
+						stripeSubscription.current_period_end * 1000,
 					),
 				},
 			);
@@ -154,7 +160,7 @@ export const subscriptionRouter = createTRPCRouter({
 			const { subscriptionService, stripeService } = ctx.services;
 
 			const subscription = await subscriptionService.getUserSubscription(
-				ctx.userId!,
+				ctx.userId,
 			);
 			if (!subscription?.stripe_subscription_id) {
 				throw new Error("No active subscription found");
@@ -192,10 +198,12 @@ export const subscriptionRouter = createTRPCRouter({
 				{
 					plan: input.plan,
 					currentPeriodStart: new Date(
-						(stripeSubscription as any).current_period_start * 1000,
+						// @ts-expect-error - Stripe subscription type is not correct
+						stripeSubscription.current_period_start * 1000,
 					),
 					currentPeriodEnd: new Date(
-						(stripeSubscription as any).current_period_end * 1000,
+						// @ts-expect-error - Stripe subscription type is not correct
+						stripeSubscription.current_period_end * 1000,
 					),
 				},
 			);
@@ -213,7 +221,7 @@ export const subscriptionRouter = createTRPCRouter({
 		const { subscriptionService, stripeService } = ctx.services;
 
 		const subscription = await subscriptionService.getUserSubscription(
-			ctx.userId!,
+			ctx.userId,
 		);
 		if (!subscription?.stripe_subscription_id) {
 			throw new Error("No active subscription found");
@@ -249,7 +257,7 @@ export const subscriptionRouter = createTRPCRouter({
 		const { subscriptionService } = ctx.services;
 
 		const subscription = await subscriptionService.getUserSubscription(
-			ctx.userId!,
+			ctx.userId,
 		);
 		if (!subscription) {
 			return [];
@@ -265,7 +273,7 @@ export const subscriptionRouter = createTRPCRouter({
 		const { subscriptionService } = ctx.services;
 
 		const subscription = await subscriptionService.getUserSubscription(
-			ctx.userId!,
+			ctx.userId,
 		);
 		if (!subscription) {
 			return {
@@ -308,7 +316,7 @@ export const subscriptionRouter = createTRPCRouter({
 		const { contactLimitService } = ctx.services;
 
 		const limitStatus = await contactLimitService.getContactLimitStatus(
-			ctx.userId!,
+			ctx.userId,
 		);
 
 		return limitStatus;

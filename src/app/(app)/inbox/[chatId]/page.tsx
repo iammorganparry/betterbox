@@ -108,7 +108,8 @@ export default function ChatPage() {
   }
 
   // Check for contact limit restriction error
-  const isContactLimitError = chatError?.data?.code === "FORBIDDEN" &&
+  const isContactLimitError =
+    chatError?.data?.code === "FORBIDDEN" &&
     chatError?.message?.includes("beyond your current plan's limit");
 
   if (isContactLimitError) {
@@ -116,12 +117,16 @@ export default function ChatPage() {
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
           <div className="mb-4">
-            <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-amber-100 flex items-center justify-center">
-              <span className="text-amber-600 text-2xl">✨</span>
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
+              <span className="text-2xl text-amber-600">✨</span>
             </div>
-            <h3 className="font-medium text-lg text-amber-700 mb-2">Premium Contact</h3>
-            <p className="text-amber-600 text-sm max-w-md mx-auto">
-              This contact is beyond your current plan's limit. Upgrade your subscription to view this conversation and unlock access to all your contacts.
+            <h3 className="mb-2 font-medium text-amber-700 text-lg">
+              Premium Contact
+            </h3>
+            <p className="mx-auto max-w-md text-amber-600 text-sm">
+              This contact is beyond your current plan's limit. Upgrade your
+              subscription to view this conversation and unlock access to all
+              your contacts.
             </p>
           </div>
           <div className="space-y-2">
@@ -162,50 +167,45 @@ export default function ChatPage() {
         <div className="border-b p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {chatDetails.UnipileChatAttendee?.map(
-                (attendee: ChatAttendee) => {
-                  if (attendee.is_self !== 1 && attendee.contact) {
-                    const contact = attendee.contact;
-                    const displayName =
-                      contact.full_name ||
-                      [contact.first_name, contact.last_name]
-                        .filter(Boolean)
-                        .join(" ") ||
-                      "Unknown Contact";
+              {chatDetails.unipileChatAttendees?.map((attendee) => {
+                if (attendee.is_self !== 1 && attendee.contact) {
+                  const contact = attendee.contact;
+                  const displayName =
+                    contact.full_name ||
+                    [contact.first_name, contact.last_name]
+                      .filter(Boolean)
+                      .join(" ") ||
+                    "Unknown Contact";
 
-                    return (
-                      <div
-                        key={attendee.id}
-                        className="flex items-center gap-3"
-                      >
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage
-                            src={contact.profile_image_url || undefined}
-                            alt={displayName}
-                          />
-                          <AvatarFallback>
-                            {displayName
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")
-                              .toUpperCase()
-                              .slice(0, 2)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <h2 className="font-medium text-lg">{displayName}</h2>
-                          {contact.headline && (
-                            <p className="text-muted-foreground text-sm">
-                              {contact.headline}
-                            </p>
-                          )}
-                        </div>
+                  return (
+                    <div key={attendee.id} className="flex items-center gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage
+                          src={contact.profile_image_url || undefined}
+                          alt={displayName}
+                        />
+                        <AvatarFallback>
+                          {displayName
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .toUpperCase()
+                            .slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <h2 className="font-medium text-lg">{displayName}</h2>
+                        {contact.headline && (
+                          <p className="text-muted-foreground text-sm">
+                            {contact.headline}
+                          </p>
+                        )}
                       </div>
-                    );
-                  }
-                  return null;
+                    </div>
+                  );
                 }
-              )}
+                return null;
+              })}
             </div>
 
             {/* No chat actions needed - opening chat automatically marks as read */}
@@ -224,15 +224,17 @@ export default function ChatPage() {
             {messages.map((message: MessageData) => (
               <div
                 key={message.id}
-                className={`group flex ${message.is_outgoing ? "justify-end" : "justify-start"
-                  }`}
+                className={`group flex ${
+                  message.is_outgoing ? "justify-end" : "justify-start"
+                }`}
               >
                 <div className="flex max-w-[70%] items-start gap-2">
                   <div
-                    className={`relative rounded-lg px-4 py-2 ${message.is_outgoing
-                      ? "bg-blue-500 text-white"
-                      : "bg-gray-100 text-gray-900"
-                      }`}
+                    className={`relative rounded-lg px-4 py-2 ${
+                      message.is_outgoing
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-100 text-gray-900"
+                    }`}
                   >
                     <p className="text-sm">{message.content}</p>
                     <p className="mt-1 text-xs opacity-70">
