@@ -7,7 +7,7 @@ import { env } from "~/env";
 const client = postgres(env.DATABASE_URL);
 
 // Create drizzle instance
-export const db = drizzle(client, { schema });
+export const db = drizzle({ schema, client });
 
 // Export types for compatibility
 export type Database = typeof db;

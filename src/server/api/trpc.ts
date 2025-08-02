@@ -157,6 +157,7 @@ const enforceUserIsAuthed = t.middleware(({ ctx, next }) => {
 			auth: ctx.auth,
 			db: ctx.db,
 			services: ctx.services,
+			headers: ctx.headers,
 		},
 	});
 });

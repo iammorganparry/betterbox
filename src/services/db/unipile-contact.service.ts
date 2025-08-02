@@ -323,7 +323,7 @@ export class UnipileContactService {
 				COUNT(*) FILTER (WHERE is_connection = true)::int as connections,
 				COUNT(*) FILTER (WHERE last_interaction > NOW() - INTERVAL '30 days')::int as recently_interacted,
 				COUNT(*) FILTER (WHERE profile_image_url IS NOT NULL)::int as with_profile_images
-			FROM unipile_contacts
+			FROM unipile_contact
 			WHERE unipile_account_id = ${unipileAccountId} AND is_deleted = false
 		`);
 

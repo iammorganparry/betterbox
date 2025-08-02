@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Trash2, MoreHorizontal } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import {
@@ -15,6 +15,8 @@ import {
 import { toast } from "sonner";
 import { MessageInput } from "~/components/message-input";
 import { useRouter } from "next/navigation";
+import { AppHeader } from "~/components/app-header";
+import { SidebarInset } from "~/components/ui/sidebar";
 
 interface ChatAttendee {
   id: string;
@@ -46,6 +48,24 @@ export default function ChatPage() {
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(
     null
   );
+
+  // Get contact name for breadcrumbs
+  const getContactName = () => {
+    if (!chatDetails?.unipileChatAttendees) return chatId;
+
+    const attendee = chatDetails.unipileChatAttendees.find(
+      (attendee) => attendee.is_self !== 1 && attendee.contact
+    );
+
+    if (!attendee?.contact) return chatId;
+
+    const contact = attendee.contact;
+    return (
+      contact.full_name ||
+      [contact.first_name, contact.last_name].filter(Boolean).join(" ") ||
+      "Unknown Contact"
+    );
+  };
 
   // Fetch selected chat details and messages
   const {
@@ -96,14 +116,21 @@ export default function ChatPage() {
 
   if (!chatId) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center text-muted-foreground">
-          <h3 className="font-medium text-lg">Chat not found</h3>
-          <p className="text-sm">
-            The requested conversation could not be found
-          </p>
+      <>
+        <AppHeader
+          breadcrumbLabels={{
+            inbox: "Inbox",
+          }}
+        />
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center text-muted-foreground">
+            <h3 className="font-medium text-lg">Chat not found</h3>
+            <p className="text-sm">
+              The requested conversation could not be found
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -114,188 +141,215 @@ export default function ChatPage() {
 
   if (isContactLimitError) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
-              <span className="text-2xl text-amber-600">✨</span>
+      <>
+        <AppHeader
+          breadcrumbLabels={{
+            inbox: "Inbox",
+            [chatId]: "Premium Contact",
+          }}
+        />
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center">
+            <div className="mb-4">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
+                <span className="text-2xl text-amber-600">✨</span>
+              </div>
+              <h3 className="mb-2 font-medium text-amber-700 text-lg">
+                Premium Contact
+              </h3>
+              <p className="mx-auto max-w-md text-amber-600 text-sm">
+                This contact is beyond your current plan's limit. Upgrade your
+                subscription to view this conversation and unlock access to all
+                your contacts.
+              </p>
             </div>
-            <h3 className="mb-2 font-medium text-amber-700 text-lg">
-              Premium Contact
-            </h3>
-            <p className="mx-auto max-w-md text-amber-600 text-sm">
-              This contact is beyond your current plan's limit. Upgrade your
-              subscription to view this conversation and unlock access to all
-              your contacts.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Button
-              onClick={() => router.push("/billing")}
-              className="bg-amber-600 hover:bg-amber-700"
-            >
-              Upgrade Plan
-            </Button>
-            <br />
-            <Button
-              variant="outline"
-              onClick={() => router.push("/inbox")}
-              className="text-sm"
-            >
-              Back to Inbox
-            </Button>
+            <div className="space-y-2">
+              <Button
+                onClick={() => router.push("/billing")}
+                className="bg-amber-600 hover:bg-amber-700"
+              >
+                Upgrade Plan
+              </Button>
+              <br />
+              <Button
+                variant="outline"
+                onClick={() => router.push("/inbox")}
+                className="text-sm"
+              >
+                Back to Inbox
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (chatLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center text-muted-foreground">
-          Loading chat details...
+      <>
+        <AppHeader
+          breadcrumbLabels={{
+            inbox: "Inbox",
+            [chatId]: "Loading...",
+          }}
+        />
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center text-muted-foreground">
+            Loading chat details...
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      {chatDetails && (
-        <div className="border-b p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {chatDetails.unipileChatAttendees?.map((attendee) => {
-                if (attendee.is_self !== 1 && attendee.contact) {
-                  const contact = attendee.contact;
-                  const displayName =
-                    contact.full_name ||
-                    [contact.first_name, contact.last_name]
-                      .filter(Boolean)
-                      .join(" ") ||
-                    "Unknown Contact";
+    <>
+      <AppHeader
+        breadcrumbLabels={{
+          inbox: "Inbox",
+          [chatId]: getContactName(),
+        }}
+      />
+      <div className="flex h-full flex-col">
+        {/* Header */}
+        {chatDetails && (
+          <div className="border-b p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {chatDetails.unipileChatAttendees?.map((attendee) => {
+                  if (attendee.is_self !== 1 && attendee.contact) {
+                    const contact = attendee.contact;
+                    const displayName =
+                      contact.full_name ||
+                      [contact.first_name, contact.last_name]
+                        .filter(Boolean)
+                        .join(" ") ||
+                      "Unknown Contact";
 
-                  return (
-                    <div key={attendee.id} className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage
-                          src={contact.profile_image_url || undefined}
-                          alt={displayName}
-                        />
-                        <AvatarFallback>
-                          {displayName
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .toUpperCase()
-                            .slice(0, 2)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <h2 className="font-medium text-lg">{displayName}</h2>
-                        {contact.headline && (
-                          <p className="text-muted-foreground text-sm">
-                            {contact.headline}
-                          </p>
-                        )}
+                    return (
+                      <div
+                        key={attendee.id}
+                        className="flex items-center gap-3"
+                      >
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage
+                            src={contact.profile_image_url || undefined}
+                            alt={displayName}
+                          />
+                          <AvatarFallback>
+                            {displayName
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .toUpperCase()
+                              .slice(0, 2)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h2 className="font-medium text-lg">{displayName}</h2>
+                          {contact.headline && (
+                            <p className="text-muted-foreground text-sm">
+                              {contact.headline}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                }
-                return null;
-              })}
-            </div>
-
-            {/* No chat actions needed - opening chat automatically marks as read */}
-          </div>
-        </div>
-      )}
-
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {messagesLoading ? (
-          <div className="text-center text-muted-foreground">
-            Loading messages...
-          </div>
-        ) : messages && messages.length > 0 ? (
-          <div className="space-y-4">
-            {messages.map((message: MessageData) => (
-              <div
-                key={message.id}
-                className={`group flex ${
-                  message.is_outgoing ? "justify-end" : "justify-start"
-                }`}
-              >
-                <div className="flex max-w-[70%] items-start gap-2">
-                  <div
-                    className={`relative rounded-lg px-4 py-2 ${
-                      message.is_outgoing
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-100 text-gray-900"
-                    }`}
-                  >
-                    <p className="text-sm">{message.content}</p>
-                    <p className="mt-1 text-xs opacity-70">
-                      {message.sent_at
-                        ? new Date(message.sent_at).toLocaleTimeString()
-                        : ""}
-                    </p>
-                  </div>
-
-                  {/* Delete button - only show for user's own messages */}
-                  {message.is_outgoing && (
-                    <div className="opacity-0 transition-opacity group-hover:opacity-100">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            disabled={deletingMessageId === message.id}
-                            data-testid="message-options-button"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleDeleteMessage(message.id)}
-                            className="text-red-600 focus:text-red-600"
-                            disabled={deletingMessageId === message.id}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            {deletingMessageId === message.id
-                              ? "Deleting..."
-                              : "Delete message"}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  )}
-                </div>
+                    );
+                  }
+                  return null;
+                })}
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center text-muted-foreground">
-            No messages in this conversation
+
+              {/* No chat actions needed - opening chat automatically marks as read */}
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Message Input Area */}
-      <MessageInput
-        chatId={chatId}
-        onMessageSent={() => void refetchMessages()}
-        disabled={chatLoading || !chatDetails}
-        placeholder={
-          chatDetails?.read_only === 1
-            ? "This conversation is read-only"
-            : "Type a message..."
-        }
-      />
-    </div>
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {messagesLoading ? (
+            <div className="text-center text-muted-foreground">
+              Loading messages...
+            </div>
+          ) : messages && messages.length > 0 ? (
+            <div className="space-y-4">
+              {messages.map((message: MessageData) => (
+                <div
+                  key={message.id}
+                  className={`group flex ${
+                    message.is_outgoing ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div className="flex max-w-[70%] items-start gap-2">
+                    <div
+                      className={`relative rounded-lg px-4 py-2 ${
+                        message.is_outgoing
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-100 text-gray-900"
+                      }`}
+                    >
+                      <p className="text-sm">{message.content}</p>
+                      <p className="mt-1 text-xs opacity-70">
+                        {message.sent_at
+                          ? new Date(message.sent_at).toLocaleTimeString()
+                          : ""}
+                      </p>
+                    </div>
+
+                    {/* Delete button - only show for user's own messages */}
+                    {message.is_outgoing && (
+                      <div className="opacity-0 transition-opacity group-hover:opacity-100">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              disabled={deletingMessageId === message.id}
+                              data-testid="message-options-button"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteMessage(message.id)}
+                              className="text-red-600 focus:text-red-600"
+                              disabled={deletingMessageId === message.id}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              {deletingMessageId === message.id
+                                ? "Deleting..."
+                                : "Delete message"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center text-muted-foreground">
+              No messages in this conversation
+            </div>
+          )}
+        </div>
+
+        {/* Message Input Area */}
+        <MessageInput
+          chatId={chatId}
+          onMessageSent={() => void refetchMessages()}
+          disabled={chatLoading || !chatDetails}
+          placeholder={
+            chatDetails?.read_only === 1
+              ? "This conversation is read-only"
+              : "Type a message..."
+          }
+        />
+      </div>
+    </>
   );
 }

@@ -1,11 +1,10 @@
 import {
   ArchiveX,
+  EyeIcon,
   Home,
   Inbox,
   Send,
   Trash2,
-  File,
-  BarChart3,
   User,
 } from "lucide-react";
 
@@ -29,27 +28,9 @@ export const sidebarConfig = [
     isActive: true,
   },
   {
-    title: "Drafts",
-    url: "#",
-    icon: File,
-    isActive: false,
-  },
-  {
-    title: "Sent",
-    url: "#",
-    icon: Send,
-    isActive: false,
-  },
-  {
-    title: "Junk",
-    url: "#",
-    icon: ArchiveX,
-    isActive: false,
-  },
-  {
-    title: "Trash",
-    url: "#",
-    icon: Trash2,
+    title: "Profile Views",
+    url: "/profile-views",
+    icon: EyeIcon,
     isActive: false,
   },
 ];

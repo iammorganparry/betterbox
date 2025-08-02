@@ -113,19 +113,19 @@ export class ChatFolderService {
 		folderId: string,
 		userId: string,
 	): Promise<ChatFolder | null> {
-		const result = await (
-			await this.drizzleDb
-				.select()
-				.from(chatFolders)
-				.where(eq(chatFolders.id, folderId))
-				.limit(1)
-		)[0];
+		const result = await this.drizzleDb
+			.select()
+			.from(chatFolders)
+			.where(
+				and(
+					eq(chatFolders.id, folderId),
+					eq(chatFolders.user_id, userId),
+					eq(chatFolders.is_deleted, false),
+				),
+			)
+			.limit(1);
 
-		if (!result) {
-			return null;
-		}
-
-		return result;
+		return result[0] || null;
 	}
 
 	/**
@@ -142,7 +142,13 @@ export class ChatFolderService {
 				...data,
 				updated_at: new Date(),
 			})
-			.where(eq(chatFolders.id, folderId))
+			.where(
+				and(
+					eq(chatFolders.id, folderId),
+					eq(chatFolders.user_id, userId),
+					eq(chatFolders.is_deleted, false),
+				),
+			)
 			.returning();
 
 		if (!result[0]) {
@@ -156,22 +162,26 @@ export class ChatFolderService {
 	 * Soft delete a folder
 	 */
 	async deleteFolder(folderId: string, userId: string): Promise<ChatFolder> {
-		const result = await (
-			await this.drizzleDb
-				.update(chatFolders)
-				.set({
-					is_deleted: true,
-					updated_at: new Date(),
-				})
-				.where(eq(chatFolders.id, folderId))
-				.returning()
-		)[0];
+		const result = await this.drizzleDb
+			.update(chatFolders)
+			.set({
+				is_deleted: true,
+				updated_at: new Date(),
+			})
+			.where(
+				and(
+					eq(chatFolders.id, folderId),
+					eq(chatFolders.user_id, userId),
+					eq(chatFolders.is_deleted, false),
+				),
+			)
+			.returning();
 
-		if (!result) {
+		if (!result[0]) {
 			throw new Error("Failed to delete chat folder");
 		}
 
-		return result;
+		return result[0];
 	}
 
 	/**
@@ -196,20 +206,18 @@ export class ChatFolderService {
 		// First, check if an assignment already exists (including soft-deleted ones)
 		const existingAssignment =
 			await this.drizzleDb.query.chatFolderAssignments.findFirst({
-				where: (table, { eq }) =>
+				where: (table, { eq, and }) =>
 					and(eq(table.chat_id, chatId), eq(table.folder_id, folderId)),
 				with: {
 					chat: true,
 				},
 			});
 
-		if (!existingAssignment) {
-			throw new Error("Assignment not found");
-		}
+		let assignmentId: string;
 
-		// If assignment exists, update it (restore if soft-deleted)
-		const folderAssignment = await (
-			await this.drizzleDb
+		if (existingAssignment) {
+			// If assignment exists, update it (restore if soft-deleted)
+			const result = await this.drizzleDb
 				.update(chatFolderAssignments)
 				.set({
 					is_deleted: false,
@@ -217,32 +225,33 @@ export class ChatFolderService {
 					updated_at: new Date(),
 				})
 				.where(eq(chatFolderAssignments.id, existingAssignment.id))
-				.returning()
-		)[0];
+				.returning();
 
-		if (!folderAssignment) {
-			throw new Error("Failed to assign chat to folder");
-		}
-
-		// If no assignment exists, create a new one
-		const result = await (
-			await this.drizzleDb
+			if (!result[0]) {
+				throw new Error("Failed to assign chat to folder");
+			}
+			assignmentId = result[0].id;
+		} else {
+			// If no assignment exists, create a new one
+			const result = await this.drizzleDb
 				.insert(chatFolderAssignments)
 				.values({
 					chat_id: chatId,
 					folder_id: folderId,
 					assigned_by_id: assignedById,
 				})
-				.returning()
-		)[0];
+				.returning();
 
-		if (!result) {
-			throw new Error("Failed to assign chat to folder");
+			if (!result[0]) {
+				throw new Error("Failed to assign chat to folder");
+			}
+			assignmentId = result[0].id;
 		}
 
+		// Return the assignment with full details
 		const returnedResult =
 			await this.drizzleDb.query.chatFolderAssignments.findFirst({
-				where: (table, { eq }) => eq(table.id, result.id),
+				where: (table, { eq }) => eq(table.id, assignmentId),
 				with: {
 					chat: {
 						with: {
@@ -289,7 +298,7 @@ export class ChatFolderService {
 			throw new Error("Assignment not found");
 		}
 
-		const result = await await this.drizzleDb
+		const result = await this.drizzleDb
 			.update(chatFolderAssignments)
 			.set({
 				is_deleted: true,
@@ -405,33 +414,20 @@ export class ChatFolderService {
 	async getFoldersWithChatCounts(
 		userId: string,
 	): Promise<(ChatFolder & { chat_count: number })[]> {
-		const result = await this.drizzleDb
-			.select({
-				chat_folder: chatFolders,
-				chat_count: count(chatFolderAssignments.id),
-			})
-			.from(chatFolders)
-			.where(
-				and(eq(chatFolders.user_id, userId), eq(chatFolders.is_deleted, false)),
-			)
-			.innerJoin(
-				chatFolderAssignments,
-				eq(chatFolders.id, chatFolderAssignments.folder_id),
-			)
-			.groupBy(chatFolders.id)
-			.orderBy(asc(chatFolders.sort_order));
+		const result = await this.drizzleDb.query.chatFolders.findMany({
+			where: (table, { eq, and }) =>
+				and(eq(table.user_id, userId), eq(table.is_deleted, false)),
+			with: {
+				chatFolderAssignments: {
+					where: (assignments, { eq }) => eq(assignments.is_deleted, false),
+				},
+			},
+			orderBy: (table) => [asc(table.sort_order), asc(table.name)],
+		});
 
-		if (!result[0]) {
-			throw new Error("Failed to get folders with chat counts");
-		}
-
-		if (!result) {
-			throw new Error("Failed to get folders with chat counts");
-		}
-
-		return result.map((row) => ({
-			...row.chat_folder,
-			chat_count: row.chat_count,
+		return result.map((folder) => ({
+			...folder,
+			chat_count: folder.chatFolderAssignments.length,
 		}));
 	}
 

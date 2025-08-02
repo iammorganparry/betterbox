@@ -266,15 +266,15 @@ export class UnipileChatService {
 			order_direction = "desc",
 		} = options;
 
-		// Build cursor condition for pagination
+		// Build WHERE conditions for chats using subquery
 		const whereConditions = [
-			eq(unipileAccounts.user_id, userId),
-			eq(unipileAccounts.is_deleted, false),
+			sql`${unipileChats.unipile_account_id} IN (
+				SELECT id FROM unipile_account 
+				WHERE user_id = ${userId} 
+				AND is_deleted = false
+				${provider ? sql`AND provider = ${provider}` : sql``}
+			)`,
 		];
-
-		if (provider) {
-			whereConditions.push(eq(unipileAccounts.provider, provider));
-		}
 
 		if (!include_deleted) {
 			whereConditions.push(eq(unipileChats.is_deleted, false));
@@ -297,15 +297,18 @@ export class UnipileChatService {
 			limit: limit + 1,
 			with: {
 				unipileChatAttendees: {
+					where: (table, { eq }) => eq(table.is_deleted, false),
 					with: {
 						contact: true,
 					},
 				},
 				unipileMessages: {
+					where: (table, { eq }) => eq(table.is_deleted, false),
 					with: {
 						unipileMessageAttachments: true,
 					},
 				},
+				unipileAccount: true,
 			},
 		});
 
@@ -316,11 +319,8 @@ export class UnipileChatService {
 			? resultChats[resultChats.length - 1]?.id
 			: undefined;
 
-		// Extract just the chat data from join results
-		const chatData = resultChats.map((row) => row);
-
 		return {
-			chats: chatData as ChatWithDetails[],
+			chats: resultChats as ChatWithDetails[],
 			nextCursor,
 			hasMore,
 		};
@@ -332,14 +332,42 @@ export class UnipileChatService {
 	async updateLastMessageAt(
 		chatId: string,
 		lastMessageAt: Date,
+		userId?: string,
 	): Promise<UnipileChat> {
+		// If userId provided, validate ownership
+		const whereConditions = [eq(unipileChats.id, chatId)];
+
+		if (userId) {
+			// Ensure user owns this chat through unipile account
+			const chatExists = await this.drizzleDb
+				.select({ id: unipileChats.id })
+				.from(unipileChats)
+				.innerJoin(
+					unipileAccounts,
+					eq(unipileChats.unipile_account_id, unipileAccounts.id),
+				)
+				.where(
+					and(
+						eq(unipileChats.id, chatId),
+						eq(unipileAccounts.user_id, userId),
+						eq(unipileAccounts.is_deleted, false),
+						eq(unipileChats.is_deleted, false),
+					),
+				)
+				.limit(1);
+
+			if (!chatExists[0]) {
+				throw new Error("Chat not found or access denied");
+			}
+		}
+
 		const result = await this.drizzleDb
 			.update(unipileChats)
 			.set({
 				last_message_at: lastMessageAt,
 				updated_at: new Date(),
 			})
-			.where(eq(unipileChats.id, chatId))
+			.where(and(...whereConditions))
 			.returning();
 
 		if (!result[0]) {
@@ -462,7 +490,34 @@ export class UnipileChatService {
 	/**
 	 * Mark chat as deleted (soft delete)
 	 */
-	async markChatAsDeleted(chatId: string): Promise<UnipileChat> {
+	async markChatAsDeleted(
+		chatId: string,
+		userId?: string,
+	): Promise<UnipileChat> {
+		// If userId provided, validate ownership
+		if (userId) {
+			const chatExists = await this.drizzleDb
+				.select({ id: unipileChats.id })
+				.from(unipileChats)
+				.innerJoin(
+					unipileAccounts,
+					eq(unipileChats.unipile_account_id, unipileAccounts.id),
+				)
+				.where(
+					and(
+						eq(unipileChats.id, chatId),
+						eq(unipileAccounts.user_id, userId),
+						eq(unipileAccounts.is_deleted, false),
+						eq(unipileChats.is_deleted, false),
+					),
+				)
+				.limit(1);
+
+			if (!chatExists[0]) {
+				throw new Error("Chat not found or access denied");
+			}
+		}
+
 		const result = await this.drizzleDb
 			.update(unipileChats)
 			.set({
@@ -484,7 +539,37 @@ export class UnipileChatService {
 	 */
 	async markAttendeeAsDeleted(
 		attendeeId: string,
+		userId?: string,
 	): Promise<UnipileChatAttendee> {
+		// If userId provided, validate ownership through chat -> account
+		if (userId) {
+			const attendeeExists = await this.drizzleDb
+				.select({ id: unipileChatAttendees.id })
+				.from(unipileChatAttendees)
+				.innerJoin(
+					unipileChats,
+					eq(unipileChatAttendees.chat_id, unipileChats.id),
+				)
+				.innerJoin(
+					unipileAccounts,
+					eq(unipileChats.unipile_account_id, unipileAccounts.id),
+				)
+				.where(
+					and(
+						eq(unipileChatAttendees.id, attendeeId),
+						eq(unipileAccounts.user_id, userId),
+						eq(unipileAccounts.is_deleted, false),
+						eq(unipileChats.is_deleted, false),
+						eq(unipileChatAttendees.is_deleted, false),
+					),
+				)
+				.limit(1);
+
+			if (!attendeeExists[0]) {
+				throw new Error("Attendee not found or access denied");
+			}
+		}
+
 		const result = await this.drizzleDb
 			.update(unipileChatAttendees)
 			.set({
@@ -563,13 +648,43 @@ export class UnipileChatService {
 
 	/**
 	 * Get chat with full details
-	 *
 	 */
-	async getChatWithDetails(chatId: string): Promise<ChatWithDetails | null> {
-		// TODO: Implement with proper Drizzle relations
-		// For now, return basic chat info
+	async getChatWithDetails(
+		chatId: string,
+		userId?: string,
+	): Promise<ChatWithDetails | null> {
+		// Build WHERE conditions
+		const whereConditions = [
+			eq(unipileChats.id, chatId),
+			eq(unipileChats.is_deleted, false),
+		];
+
+		// If userId provided, validate ownership through unipile account
+		if (userId) {
+			const chatExists = await this.drizzleDb
+				.select({ id: unipileChats.id })
+				.from(unipileChats)
+				.innerJoin(
+					unipileAccounts,
+					eq(unipileChats.unipile_account_id, unipileAccounts.id),
+				)
+				.where(
+					and(
+						eq(unipileChats.id, chatId),
+						eq(unipileAccounts.user_id, userId),
+						eq(unipileAccounts.is_deleted, false),
+						eq(unipileChats.is_deleted, false),
+					),
+				)
+				.limit(1);
+
+			if (!chatExists[0]) {
+				return null; // Chat not found or access denied
+			}
+		}
+
 		const result = await this.drizzleDb.query.unipileChats.findFirst({
-			where: eq(unipileChats.id, chatId),
+			where: and(...whereConditions),
 			with: {
 				unipileChatAttendees: {
 					where: (table, { eq }) => eq(table.is_deleted, false),
@@ -631,7 +746,31 @@ export class UnipileChatService {
 	/**
 	 * Mark chat as read (set unread_count to 0)
 	 */
-	async markChatAsRead(chatId: string): Promise<UnipileChat> {
+	async markChatAsRead(chatId: string, userId?: string): Promise<UnipileChat> {
+		// If userId provided, validate ownership
+		if (userId) {
+			const chatExists = await this.drizzleDb
+				.select({ id: unipileChats.id })
+				.from(unipileChats)
+				.innerJoin(
+					unipileAccounts,
+					eq(unipileChats.unipile_account_id, unipileAccounts.id),
+				)
+				.where(
+					and(
+						eq(unipileChats.id, chatId),
+						eq(unipileAccounts.user_id, userId),
+						eq(unipileAccounts.is_deleted, false),
+						eq(unipileChats.is_deleted, false),
+					),
+				)
+				.limit(1);
+
+			if (!chatExists[0]) {
+				throw new Error("Chat not found or access denied");
+			}
+		}
+
 		const result = await this.drizzleDb
 			.update(unipileChats)
 			.set({
@@ -654,7 +793,32 @@ export class UnipileChatService {
 	async updateUnreadCount(
 		chatId: string,
 		unreadCount: number,
+		userId?: string,
 	): Promise<UnipileChat> {
+		// If userId provided, validate ownership
+		if (userId) {
+			const chatExists = await this.drizzleDb
+				.select({ id: unipileChats.id })
+				.from(unipileChats)
+				.innerJoin(
+					unipileAccounts,
+					eq(unipileChats.unipile_account_id, unipileAccounts.id),
+				)
+				.where(
+					and(
+						eq(unipileChats.id, chatId),
+						eq(unipileAccounts.user_id, userId),
+						eq(unipileAccounts.is_deleted, false),
+						eq(unipileChats.is_deleted, false),
+					),
+				)
+				.limit(1);
+
+			if (!chatExists[0]) {
+				throw new Error("Chat not found or access denied");
+			}
+		}
+
 		const result = await this.drizzleDb
 			.update(unipileChats)
 			.set({

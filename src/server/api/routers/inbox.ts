@@ -25,9 +25,6 @@ export const inboxRouter = createTRPCRouter({
 						{
 							limit: input.limit,
 							cursor: input.cursor,
-							include_attendees: true,
-							include_account: true,
-							include_messages: true,
 							order_by: "last_message_at",
 							order_direction: "desc",
 						},
@@ -49,6 +46,7 @@ export const inboxRouter = createTRPCRouter({
 					hasMore: result.hasMore,
 				};
 			} catch (error) {
+				console.error("❌ Error in getChats:", error);
 				throw new TRPCError({
 					code: "INTERNAL_SERVER_ERROR",
 					message: "Failed to fetch chats",

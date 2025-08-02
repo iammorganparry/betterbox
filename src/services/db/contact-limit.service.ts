@@ -1,12 +1,12 @@
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, and } from "drizzle-orm";
 import type { db } from "~/db";
 import {
 	subscriptions,
+	unipileAccounts,
+	unipileContacts,
+	unipileMessages,
 	type unipileChats,
 	type unipileChatAttendees,
-	type unipileContacts,
-	type unipileMessages,
-	type unipileAccounts,
 } from "~/db/schema";
 import {
 	getContactLimitForPlan,
@@ -40,31 +40,30 @@ export class ContactLimitService {
 		// 1. Sent messages to the user
 		// 2. Viewed the user's profile
 
-		// Use a UNION to get the total unique count across both sources
-		const result = await this.drizzleDb.execute(sql`
-			SELECT COUNT(DISTINCT contact_id)::int as count
-			FROM (
-				-- Contacts from incoming messages
-				SELECT DISTINCT uc.external_id as contact_id
-				FROM "UnipileContact" uc
-				INNER JOIN "UnipileAccount" ua ON uc.unipile_account_id = ua.id
-				INNER JOIN "UnipileMessage" um ON um.sender_id = uc.external_id
-				WHERE ua.user_id = ${userId}
-				  AND ua.is_deleted = false
-				  AND uc.is_deleted = false
-				  AND um.is_deleted = false
-				  AND um.is_outgoing = false
-				
-				UNION
-				
-				-- Contacts from profile views
-				SELECT DISTINCT viewer_profile_id as contact_id
-				FROM "UnipileProfileView"
-				WHERE user_id = ${userId}
-				  AND viewer_profile_id IS NOT NULL
-				  AND is_deleted = false
-			) combined_contacts
-		`);
+		// Import required tables
+
+		const result = await this.drizzleDb
+			.select({
+				count: sql<number>`COUNT(DISTINCT ${unipileContacts.id})`,
+			})
+			.from(unipileContacts)
+			.innerJoin(
+				unipileAccounts,
+				eq(unipileContacts.unipile_account_id, unipileAccounts.id),
+			)
+			.innerJoin(
+				unipileMessages,
+				eq(unipileMessages.sender_id, unipileContacts.external_id),
+			)
+			.where(
+				and(
+					eq(unipileAccounts.user_id, userId),
+					eq(unipileAccounts.is_deleted, false),
+					eq(unipileContacts.is_deleted, false),
+					eq(unipileMessages.is_deleted, false),
+					eq(unipileMessages.is_outgoing, false),
+				),
+			);
 
 		return (result[0] as { count: number })?.count || 0;
 	}

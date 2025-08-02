@@ -275,7 +275,7 @@ export class UnipileMessageService {
 			is_read,
 		} = options;
 
-		// TODO: Implement proper join with unipile_accounts table for user filtering
+		// TODO: Implement proper join with unipile_account table for user filtering
 		// For now, simplified query without account filtering
 		const conditions = [];
 
@@ -401,7 +401,7 @@ export class UnipileMessageService {
 		userId: string,
 		provider?: string,
 	): Promise<number> {
-		// TODO: Implement proper join with unipile_accounts table for user filtering
+		// TODO: Implement proper join with unipile_account table for user filtering
 		const result = await this.drizzleDb
 			.select({ count: count() })
 			.from(unipileMessages)

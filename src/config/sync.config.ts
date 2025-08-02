@@ -2,8 +2,10 @@
  * Global Sync Configuration
  *
  * Centralized configuration for Unipile sync operations.
- * Easily modify limits and settings for development and production environments.
+ * Includes both environment-based (dev/prod) and subscription-based limits.
  */
+
+import { env } from "~/env";
 
 export interface SyncConfig {
 	development: {
@@ -104,6 +106,44 @@ export function getCurrentSyncConfig() {
 /**
  * Helper function to log sync configuration
  */
+/**
+ * Subscription-based sync limits configuration
+ * Defines historical sync limits based on user's subscription plan
+ */
+export const SUBSCRIPTION_SYNC_LIMITS = {
+	FREE: {
+		historicalSyncLimit: 10,
+		description: "Free plan with basic sync access",
+	},
+	STARTER: {
+		historicalSyncLimit: 50,
+		description: "Starter plan for growing professionals",
+	},
+	PROFESSIONAL: {
+		historicalSyncLimit: 100,
+		description: "Professional plan for active networkers",
+	},
+	ENTERPRISE: {
+		historicalSyncLimit: 1000,
+		description: "Enterprise plan with full access",
+	},
+} as const;
+
+export type SubscriptionPlan = keyof typeof SUBSCRIPTION_SYNC_LIMITS;
+
+/**
+ * Get historical sync limit for a subscription plan
+ */
+export function getHistoricalSyncLimitForPlan(plan: SubscriptionPlan): number {
+	if (env.NODE_ENV === "development") {
+		return 5;
+	}
+	return (
+		SUBSCRIPTION_SYNC_LIMITS[plan]?.historicalSyncLimit ??
+		SUBSCRIPTION_SYNC_LIMITS.FREE.historicalSyncLimit
+	);
+}
+
 export function logSyncConfig() {
 	const config = getCurrentSyncConfig();
 

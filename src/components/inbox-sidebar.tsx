@@ -83,8 +83,8 @@ interface ChatData {
   provider: string;
   last_message_at?: Date | null;
   unread_count: number;
-  UnipileChatAttendee?: ChatAttendee[];
-  UnipileMessage?: Array<{
+  unipileChatAttendees?: ChatAttendee[];
+  unipileMessages?: Array<{
     id: string;
     content?: string | null;
     is_outgoing: boolean;
@@ -501,6 +501,8 @@ export default function InboxSidebar() {
     }
   );
 
+  console.log("chatsData", chatsData);
+
   // Fetch contact limit status
   const { data: contactLimitStatus } =
     api.subscription.getContactLimitStatus.useQuery();
@@ -538,6 +540,8 @@ export default function InboxSidebar() {
       { folderId: selectedFolderId },
       { enabled: selectedFolderId !== "all" }
     );
+
+  console.log("folderChatsData", folderChatsData);
 
   // Mark chat as read mutation (with toast - for explicit context menu action)
   const markChatAsReadMutation = api.inbox.markChatAsRead.useMutation({
@@ -751,6 +755,8 @@ export default function InboxSidebar() {
   // Flatten the infinite query pages
   const typedChats = chatsData?.pages.flatMap((page) => page.chats) || [];
 
+  console.log("typedChats", typedChats);
+
   // Get chats to display based on folder selection
   const chatsToDisplay: ChatData[] =
     selectedFolderId === "all"
@@ -780,7 +786,7 @@ export default function InboxSidebar() {
       const searchLower = searchTerm.toLowerCase().trim();
 
       // Get contact info for searching
-      const attendee = chat.UnipileChatAttendee?.find(
+      const attendee = chat.unipileChatAttendees?.find(
         (a: ChatAttendee) => a.is_self !== 1
       );
       const contact = attendee?.contact;
@@ -803,7 +809,7 @@ export default function InboxSidebar() {
         if (headline) searchableFields.push(headline.toLowerCase());
 
         // Latest message content
-        const latestMessage = chat.UnipileMessage?.[0];
+        const latestMessage = chat.unipileMessages?.[0];
         const messageContent = latestMessage?.content || "";
         if (
           messageContent &&
@@ -830,7 +836,7 @@ export default function InboxSidebar() {
 
   // Filter out chats without proper contact information
   const chatsWithContacts = filteredChats.filter((chat) => {
-    const attendee = chat.UnipileChatAttendee?.find(
+    const attendee = chat.unipileChatAttendees?.find(
       (a: ChatAttendee) => a.is_self !== 1
     );
     const contact = attendee?.contact;
@@ -847,7 +853,7 @@ export default function InboxSidebar() {
 
   // Convert chats to the existing mail format
   const mails: GroupedChat[] = sortedChats.map((chat) => {
-    const attendee = chat.UnipileChatAttendee?.find(
+    const attendee = chat.unipileChatAttendees?.find(
       (a: ChatAttendee) => a.is_self !== 1
     );
     const contact = attendee?.contact;
@@ -860,7 +866,7 @@ export default function InboxSidebar() {
       contact?.headline === "Upgrade to view this contact";
 
     // Get the latest message for teaser
-    const latestMessage = chat.UnipileMessage?.[0];
+    const latestMessage = chat.unipileMessages?.[0];
     let messageTeaser = latestMessage?.content
       ? latestMessage.content.split(" ").slice(0, 8).join(" ") +
         (latestMessage.content.split(" ").length > 8 ? "..." : "")
@@ -910,6 +916,8 @@ export default function InboxSidebar() {
     },
     {} as Record<string, GroupedChat[]>
   );
+
+  console.log("groupedChats", groupedChats);
 
   // Sort providers alphabetically and ensure LINKEDIN comes first if it exists
   const sortedProviders = Object.keys(groupedChats).sort((a, b) => {
