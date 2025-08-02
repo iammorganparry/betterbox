@@ -3,6 +3,53 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Frosted Glass Utilities using Tailwind's backdrop-blur */
+@layer utilities {
+  .glass {
+    @apply backdrop-blur-xl bg-white/10 border border-white/20 shadow-lg shadow-black/5;
+  }
+  
+  .glass-strong {
+    @apply backdrop-blur-2xl bg-white/15 border border-white/25 shadow-xl shadow-black/10;
+  }
+  
+  .glass-subtle {
+    @apply backdrop-blur-lg bg-white/5 border border-white/10 shadow-md shadow-black/5;
+  }
+  
+  .glass-card {
+    @apply backdrop-blur-xl bg-white/8 border border-white/15 shadow-2xl shadow-black/20;
+  }
+  
+  .glass-white {
+    @apply backdrop-blur-lg bg-white/90 border border-white/40 shadow-lg shadow-black/10;
+  }
+  
+  .gradient-orb-pink {
+    background: radial-gradient(circle, rgba(255, 102, 196, 0.8) 0%, rgba(255, 102, 196, 0.3) 40%, transparent 70%);
+  }
+  
+  .gradient-orb-purple {
+    background: radial-gradient(circle, rgba(168, 85, 247, 0.8) 0%, rgba(168, 85, 247, 0.3) 40%, transparent 70%);
+  }
+  
+  .gradient-orb-blue {
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.8) 0%, rgba(59, 130, 246, 0.3) 40%, transparent 70%);
+  }
+
+  /* Global gradient background utility - for components that need explicit background */
+  .app-background {
+    background: var(--background);
+    background-image: 
+      radial-gradient(at 20% 80%, rgba(255, 102, 196, 0.15) 0%, transparent 50%),
+      radial-gradient(at 80% 20%, rgba(168, 85, 247, 0.15) 0%, transparent 50%),
+      radial-gradient(at 40% 40%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+  }
+}
+
 @theme {
 	--font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
 		"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
@@ -46,8 +93,47 @@
 	--color-sidebar-ring: var(--sidebar-ring);
 }
 
+
+
+/* Dark theme as default - frosted glass friendly */
 :root {
-	--radius: 0.625rem;
+	--radius: 0.75rem;
+	/* Dark frosted glass theme */
+	--background: oklch(0.08 0.01 300);
+	--foreground: oklch(0.98 0.001 300);
+	--card: oklch(0.15 0.02 300 / 0.8);
+	--card-foreground: oklch(0.98 0.001 300);
+	--popover: oklch(0.12 0.02 300 / 0.95);
+	--popover-foreground: oklch(0.98 0.001 300);
+	--primary: oklch(0.7 0.15 300);
+	--primary-foreground: oklch(0.98 0.001 300);
+	--secondary: oklch(0.2 0.03 300 / 0.6);
+	--secondary-foreground: oklch(0.98 0.001 300);
+	--muted: oklch(0.18 0.02 300 / 0.5);
+	--muted-foreground: oklch(0.7 0.01 300);
+	--accent: oklch(0.25 0.05 300 / 0.7);
+	--accent-foreground: oklch(0.98 0.001 300);
+	--destructive: oklch(0.6 0.25 0);
+	--border: oklch(1 0 0 / 15%);
+	--input: oklch(1 0 0 / 20%);
+	--ring: oklch(0.7 0.15 300);
+	--chart-1: oklch(0.6 0.2 300);
+	--chart-2: oklch(0.6 0.2 180);
+	--chart-3: oklch(0.6 0.2 60);
+	--chart-4: oklch(0.6 0.2 120);
+	--chart-5: oklch(0.6 0.2 240);
+	--sidebar: oklch(0.12 0.02 300 / 0.9);
+	--sidebar-foreground: oklch(0.98 0.001 300);
+	--sidebar-primary: oklch(0.7 0.15 300);
+	--sidebar-primary-foreground: oklch(0.98 0.001 300);
+	--sidebar-accent: oklch(0.25 0.05 300 / 0.7);
+	--sidebar-accent-foreground: oklch(0.98 0.001 300);
+	--sidebar-border: oklch(1 0 0 / 15%);
+	--sidebar-ring: oklch(0.7 0.15 300);
+}
+
+/* Light theme (when .light class is applied) */
+.light {
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.147 0.004 49.25);
 	--card: oklch(1 0 0);
@@ -81,45 +167,28 @@
 	--sidebar-ring: oklch(0.709 0.01 56.259);
 }
 
-.dark {
-	--background: oklch(0.147 0.004 49.25);
-	--foreground: oklch(0.985 0.001 106.423);
-	--card: oklch(0.216 0.006 56.043);
-	--card-foreground: oklch(0.985 0.001 106.423);
-	--popover: oklch(0.216 0.006 56.043);
-	--popover-foreground: oklch(0.985 0.001 106.423);
-	--primary: oklch(0.923 0.003 48.717);
-	--primary-foreground: oklch(0.216 0.006 56.043);
-	--secondary: oklch(0.268 0.007 34.298);
-	--secondary-foreground: oklch(0.985 0.001 106.423);
-	--muted: oklch(0.268 0.007 34.298);
-	--muted-foreground: oklch(0.709 0.01 56.259);
-	--accent: oklch(0.268 0.007 34.298);
-	--accent-foreground: oklch(0.985 0.001 106.423);
-	--destructive: oklch(0.704 0.191 22.216);
-	--border: oklch(1 0 0 / 10%);
-	--input: oklch(1 0 0 / 15%);
-	--ring: oklch(0.553 0.013 58.071);
-	--chart-1: oklch(0.488 0.243 264.376);
-	--chart-2: oklch(0.696 0.17 162.48);
-	--chart-3: oklch(0.769 0.188 70.08);
-	--chart-4: oklch(0.627 0.265 303.9);
-	--chart-5: oklch(0.645 0.246 16.439);
-	--sidebar: oklch(0.216 0.006 56.043);
-	--sidebar-foreground: oklch(0.985 0.001 106.423);
-	--sidebar-primary: oklch(0.488 0.243 264.376);
-	--sidebar-primary-foreground: oklch(0.985 0.001 106.423);
-	--sidebar-accent: oklch(0.268 0.007 34.298);
-	--sidebar-accent-foreground: oklch(0.985 0.001 106.423);
-	--sidebar-border: oklch(1 0 0 / 10%);
-	--sidebar-ring: oklch(0.553 0.013 58.071);
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
 	}
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground relative min-h-screen;
+    background-image: 
+      radial-gradient(at 20% 80%, rgba(255, 102, 196, 0.15) 0%, transparent 50%),
+      radial-gradient(at 80% 20%, rgba(168, 85, 247, 0.15) 0%, transparent 50%),
+      radial-gradient(at 40% 40%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
 	}
+
+  /* Ensure main content areas don't override the background */
+  main, .main, [data-main] {
+    background: transparent !important;
+  }
+
+  /* Sidebar should have its own background but not override body */
+  [data-sidebar="sidebar"] {
+    background: var(--sidebar);
+  }
 }

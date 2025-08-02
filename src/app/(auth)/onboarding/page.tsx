@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useUser } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useUser, useClerk } from "@clerk/nextjs";
+import { useRouter } from "@bprogress/next";
 import { Button } from "~/components/ui/button";
 import {
   Card,
@@ -19,6 +19,7 @@ import { Switch } from "~/components/ui/switch";
 import { LinkedInConnectionCard } from "~/components/linkedin-connection-card";
 import PaymentForm from "~/components/payment-form";
 import { updateOnboardingStep, completeOnboarding } from "./_actions";
+import { api } from "~/trpc/react";
 import {
   CheckCircle,
   Circle,
@@ -32,6 +33,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Separator } from "~/components/ui/separator";
+import { env } from "~/env";
 
 type OnboardingStep = "linkedin" | "plan" | "payment";
 
@@ -50,7 +52,29 @@ export default function OnboardingPage() {
   const [selectedPlan, setSelectedPlan] = React.useState<string>("");
   const [isAnnual, setIsAnnual] = React.useState(false);
   const { user } = useUser();
+  const { signOut } = useClerk();
   const router = useRouter();
+
+  // TRPC mutation for completing onboarding
+  const completeOnboardingMutation = api.subscription.completeOnboarding.useMutation();
+
+  // Validate that all required Stripe product IDs are configured
+  React.useEffect(() => {
+    const productIds = {
+      starter: env.NEXT_PUBLIC_STRIPE_STARTER_PRODUCT_ID,
+      standard: env.NEXT_PUBLIC_STRIPE_STANDARD_PRODUCT_ID,
+      pro: env.NEXT_PUBLIC_STRIPE_PRO_PRODUCT_ID
+    };
+
+    const missing = Object.entries(productIds).filter(([plan, id]) => !id || id.trim() === '');
+
+    if (missing.length > 0) {
+      console.error('Missing required Stripe product IDs for plans:', missing.map(([plan]) => plan));
+      toast.error('Configuration error: Missing Stripe product IDs');
+    } else {
+      console.log('All Stripe product IDs configured:', productIds);
+    }
+  }, []);
 
   // Initialize completion states from user metadata
   const [stepCompletion, setStepCompletion] = React.useState({
@@ -120,9 +144,9 @@ export default function OnboardingPage() {
 
   // Pricing logic
   const pricing = {
-    starter: { monthly: 29, annual: 261 }, // 10% discount
-    professional: { monthly: 79, annual: 711 }, // 10% discount
-    enterprise: { monthly: 199, annual: 1791 }, // 10% discount
+    starter: { monthly: 20, annual: 180 }, // 10% discount
+    standard: { monthly: 50, annual: 450 }, // 10% discount
+    pro: { monthly: 99, annual: 891 }, // 10% discount
   };
 
   const handlePlanSelection = (planType: string) => {
@@ -130,18 +154,39 @@ export default function OnboardingPage() {
     toast.success(`${planType} plan selected!`);
   };
 
-  const handlePaymentSuccess = async (paymentMethodId: string) => {
+  const { mutateAsync: completeOnboarding } = api.subscription.completeOnboarding.useMutation();
+
+  const handlePaymentSuccess = async (paymentMethodId: string, productId: string) => {
     try {
       setLoading(true);
 
-      // Here you would call your subscription creation API
+      // Here you would call your subscription creation API with the productId
       // For now, we'll simulate the process
+      console.log('Payment method ID:', paymentMethodId);
+      console.log('Stripe product ID:', productId);
+      console.log('Selected plan:', selectedPlan);
+      console.log('Is annual:', isAnnual);
+
       toast.success("Payment method added successfully!");
+
+      // CRITICAL: Mark onboarding as complete in database
+      // This is the key step that unlocks app access
+      const onboardingResult = await completeOnboardingMutation.mutateAsync({
+        paymentMethodId,
+        productId,
+        selectedPlan,
+        isAnnual,
+      });
+
+      if (!onboardingResult.success) {
+        throw new Error(onboardingResult.message || 'Failed to complete onboarding in database');
+      }
 
       // Mark payment step as complete and move to final step
       const result = await updateOnboardingStep({
         cardDetailsAdded: true,
         stripeSubscribed: true,
+        paymentMethodAdded: true, // Add this flag
       });
 
       if (result.success) {
@@ -152,6 +197,7 @@ export default function OnboardingPage() {
         toast.error(result.error || "Failed to complete setup");
       }
     } catch (error) {
+      console.error('Payment success error:', error);
       toast.error("Failed to process payment");
     } finally {
       setLoading(false);
@@ -191,19 +237,26 @@ export default function OnboardingPage() {
   const handleCompleteOnboarding = async () => {
     setLoading(true);
     try {
-      const result = await completeOnboarding();
-
-      if (result.success) {
-        await user?.reload();
-        toast.success("Onboarding completed! Welcome to BetterBox!");
-        router.push("/");
-      } else {
-        toast.error(result.error || "Failed to complete onboarding");
-      }
+      // Onboarding completion is now handled through the TRPC mutation in payment success
+      // This function is just for final UI updates and navigation
+      await user?.reload();
+      toast.success("Onboarding completed! Welcome to BetterBox!");
+      router.push("/dashboard");
     } catch (error) {
-      toast.error("An error occurred");
+      console.error("Error completing onboarding flow:", error);
+      toast.error("An error occurred during final setup");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      router.push("/sign-in");
+    } catch (error) {
+      console.error("Error signing out:", error);
+      toast.error("Failed to sign out");
     }
   };
 
@@ -274,27 +327,36 @@ export default function OnboardingPage() {
             </div>
 
             {/* Pricing Cards Grid */}
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:items-center">
-              {/* Free Plan */}
+            <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-3 lg:items-center">
+
+
+              {/* Starter Plan */}
               <Card
-                className={`flex flex-col transition-all duration-200 ${selectedPlan === "free"
-                    ? "bg-primary/5 ring-2 ring-primary"
-                    : "hover:shadow-md"
+                className={`flex flex-col transition-all duration-200 ${selectedPlan === "starter"
+                  ? "bg-primary/5 ring-2 ring-primary"
+                  : "hover:shadow-md"
                   }`}
               >
                 <CardHeader className="pb-2 text-center">
-                  <CardTitle className="mb-7">Free</CardTitle>
-                  <span className="font-bold text-5xl">Free</span>
+                  <CardTitle className="mb-7">Starter</CardTitle>
+                  <span className="font-bold text-5xl">
+                    $
+                    {isAnnual
+                      ? pricing.starter.annual
+                      : pricing.starter.monthly}
+                    {isAnnual && <span className="text-lg">/year</span>}
+                    {!isAnnual && <span className="text-lg">/month</span>}
+                  </span>
                 </CardHeader>
-                <CardDescription className="text-center">
-                  Forever free
+                <CardDescription className="mx-auto w-11/12 text-center">
+                  Essential features to get started
                 </CardDescription>
                 <CardContent className="flex-1">
                   <ul className="mt-7 space-y-2.5 text-sm">
                     <li className="flex space-x-2">
                       <CheckIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span className="text-muted-foreground">
-                        100 contacts
+                        Unlimited contacts
                       </span>
                     </li>
                     <li className="flex space-x-2">
@@ -307,70 +369,6 @@ export default function OnboardingPage() {
                       <CheckIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span className="text-muted-foreground">
                         Email support
-                      </span>
-                    </li>
-                  </ul>
-                </CardContent>
-                <CardFooter>
-                  <Button
-                    className="w-full"
-                    variant={selectedPlan === "free" ? "default" : "outline"}
-                    onClick={() => handlePlanSelection("free")}
-                  >
-                    {selectedPlan === "free" ? (
-                      <>
-                        <CheckIcon className="mr-2 h-4 w-4" />
-                        Selected
-                      </>
-                    ) : (
-                      "Get Started"
-                    )}
-                  </Button>
-                </CardFooter>
-              </Card>
-
-              {/* Starter Plan */}
-              <Card
-                className={`flex flex-col transition-all duration-200 ${selectedPlan === "starter"
-                    ? "border-primary bg-primary/5 ring-2 ring-primary"
-                    : "border-primary hover:shadow-md"
-                  }`}
-              >
-                <CardHeader className="pb-2 text-center">
-                  <Badge className="mb-3 w-max self-center uppercase">
-                    Most popular
-                  </Badge>
-                  <CardTitle className="!mb-7">Starter</CardTitle>
-                  <span className="font-bold text-5xl">
-                    $
-                    {isAnnual
-                      ? pricing.starter.annual
-                      : pricing.starter.monthly}
-                    {isAnnual && <span className="text-lg">/year</span>}
-                    {!isAnnual && <span className="text-lg">/month</span>}
-                  </span>
-                </CardHeader>
-                <CardDescription className="mx-auto w-11/12 text-center">
-                  Perfect for growing professionals
-                </CardDescription>
-                <CardContent className="flex-1">
-                  <ul className="mt-7 space-y-2.5 text-sm">
-                    <li className="flex space-x-2">
-                      <CheckIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                      <span className="text-muted-foreground">
-                        1,000 contacts
-                      </span>
-                    </li>
-                    <li className="flex space-x-2">
-                      <CheckIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                      <span className="text-muted-foreground">
-                        Advanced messaging
-                      </span>
-                    </li>
-                    <li className="flex space-x-2">
-                      <CheckIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                      <span className="text-muted-foreground">
-                        Priority support
                       </span>
                     </li>
                   </ul>
@@ -393,45 +391,48 @@ export default function OnboardingPage() {
                 </CardFooter>
               </Card>
 
-              {/* Professional Plan */}
+              {/* Standard Plan */}
               <Card
-                className={`flex flex-col transition-all duration-200 ${selectedPlan === "professional"
-                    ? "bg-primary/5 ring-2 ring-primary"
-                    : "hover:shadow-md"
+                className={`flex flex-col transition-all duration-200 ${selectedPlan === "standard"
+                  ? "border-primary bg-primary/5 ring-2 ring-primary"
+                  : "border-primary hover:shadow-md"
                   }`}
               >
                 <CardHeader className="pb-2 text-center">
-                  <CardTitle className="mb-7">Professional</CardTitle>
+                  <Badge className="mb-3 w-max self-center uppercase">
+                    Most popular
+                  </Badge>
+                  <CardTitle className="!mb-7">Standard</CardTitle>
                   <span className="font-bold text-5xl">
                     $
                     {isAnnual
-                      ? pricing.professional.annual
-                      : pricing.professional.monthly}
+                      ? pricing.standard.annual
+                      : pricing.standard.monthly}
                     {isAnnual && <span className="text-lg">/year</span>}
                     {!isAnnual && <span className="text-lg">/month</span>}
                   </span>
                 </CardHeader>
                 <CardDescription className="mx-auto w-11/12 text-center">
-                  For teams and growing businesses
+                  Perfect for growing professionals
                 </CardDescription>
                 <CardContent className="flex-1">
                   <ul className="mt-7 space-y-2.5 text-sm">
                     <li className="flex space-x-2">
                       <CheckIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span className="text-muted-foreground">
-                        5,000 contacts
+                        Unlimited contacts
                       </span>
                     </li>
                     <li className="flex space-x-2">
                       <CheckIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span className="text-muted-foreground">
-                        Team collaboration
+                        Advanced messaging
                       </span>
                     </li>
                     <li className="flex space-x-2">
                       <CheckIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span className="text-muted-foreground">
-                        Analytics & insights
+                        Priority support
                       </span>
                     </li>
                   </ul>
@@ -439,12 +440,10 @@ export default function OnboardingPage() {
                 <CardFooter>
                   <Button
                     className="w-full"
-                    variant={
-                      selectedPlan === "professional" ? "default" : "outline"
-                    }
-                    onClick={() => handlePlanSelection("professional")}
+                    variant={selectedPlan === "standard" ? "default" : undefined}
+                    onClick={() => handlePlanSelection("standard")}
                   >
-                    {selectedPlan === "professional" ? (
+                    {selectedPlan === "standard" ? (
                       <>
                         <CheckIcon className="mr-2 h-4 w-4" />
                         Selected
@@ -456,20 +455,20 @@ export default function OnboardingPage() {
                 </CardFooter>
               </Card>
 
-              {/* Enterprise Plan */}
+              {/* Pro Plan */}
               <Card
-                className={`flex flex-col transition-all duration-200 ${selectedPlan === "enterprise"
-                    ? "bg-primary/5 ring-2 ring-primary"
-                    : "hover:shadow-md"
+                className={`flex flex-col transition-all duration-200 ${selectedPlan === "pro"
+                  ? "bg-primary/5 ring-2 ring-primary"
+                  : "hover:shadow-md"
                   }`}
               >
                 <CardHeader className="pb-2 text-center">
-                  <CardTitle className="mb-7">Enterprise</CardTitle>
+                  <CardTitle className="mb-7">Pro</CardTitle>
                   <span className="font-bold text-5xl">
                     $
                     {isAnnual
-                      ? pricing.enterprise.annual
-                      : pricing.enterprise.monthly}
+                      ? pricing.pro.annual
+                      : pricing.pro.monthly}
                     {isAnnual && <span className="text-lg">/year</span>}
                     {!isAnnual && <span className="text-lg">/month</span>}
                   </span>
@@ -483,6 +482,12 @@ export default function OnboardingPage() {
                       <CheckIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span className="text-muted-foreground">
                         Unlimited contacts
+                      </span>
+                    </li>
+                    <li className="flex space-x-2">
+                      <CheckIcon className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      <span className="text-muted-foreground">
+                        AI-powered features
                       </span>
                     </li>
                     <li className="flex space-x-2">
@@ -503,11 +508,11 @@ export default function OnboardingPage() {
                   <Button
                     className="w-full"
                     variant={
-                      selectedPlan === "enterprise" ? "default" : "outline"
+                      selectedPlan === "pro" ? "default" : "outline"
                     }
-                    onClick={() => handlePlanSelection("enterprise")}
+                    onClick={() => handlePlanSelection("pro")}
                   >
-                    {selectedPlan === "enterprise" ? (
+                    {selectedPlan === "pro" ? (
                       <>
                         <CheckIcon className="mr-2 h-4 w-4" />
                         Selected
@@ -650,8 +655,8 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="h-screen bg-background">
-      <div className="container mx-auto flex h-screen flex-col items-center justify-center px-4 py-8">
+    <div className="h-screen w-full relative">
+      <div className="container mx-auto flex h-screen flex-col items-center justify-center px-4 py-8 relative z-10">
         {/* Header */}
         <div className="mb-8 text-center">
           <p className="text-muted-foreground">
@@ -665,11 +670,11 @@ export default function OnboardingPage() {
             {steps.map((step, index) => (
               <React.Fragment key={step.id}>
                 <div
-                  className={`flex items-center gap-2 ${step.id === currentStep
-                      ? "text-primary"
-                      : step.completed
-                        ? "text-green-600"
-                        : "text-muted-foreground"
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 ${step.id === currentStep
+                    ? "glass text-primary"
+                    : step.completed
+                      ? "glass-strong text-green-400"
+                      : "glass-subtle text-muted-foreground"
                     }`}
                 >
                   {step.completed ? (
@@ -683,13 +688,15 @@ export default function OnboardingPage() {
                   <span className="font-medium text-sm">{step.title}</span>
                 </div>
                 {index < steps.length - 1 && (
-                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  <ArrowRight className="h-4 w-4 text-muted-foreground/60" />
                 )}
               </React.Fragment>
             ))}
           </div>
           <div className="mx-auto max-w-2xl">
-            <Progress value={progress} className="h-2" />
+            <div className="glass-subtle rounded-full p-1">
+              <Progress value={progress} className="h-2" />
+            </div>
           </div>
         </div>
 
@@ -733,6 +740,18 @@ export default function OnboardingPage() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           )}
+        </div>
+
+        {/* Logout Footer */}
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-20">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className="glass-subtle text-muted-foreground hover:text-foreground text-xs hover:glass transition-all duration-300"
+          >
+            Not ready? Sign out
+          </Button>
         </div>
       </div>
     </div>

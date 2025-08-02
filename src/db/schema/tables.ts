@@ -47,6 +47,10 @@ export const users = pgTable("user", {
 	last_name: text("last_name"),
 	image_url: text("image_url"),
 	stripe_customer_id: text("stripe_customer_id").unique(),
+	// Onboarding enforcement fields
+	onboarding_required: boolean("onboarding_required").default(true).notNull(),
+	onboarding_completed_at: timestamp("onboarding_completed_at"),
+	payment_method_added: boolean("payment_method_added").default(false).notNull(),
 	is_deleted: boolean("is_deleted").default(false).notNull(),
 	created_at: timestamp("created_at").defaultNow().notNull(),
 	updated_at: timestamp("updated_at").defaultNow().notNull(),

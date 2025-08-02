@@ -6,6 +6,7 @@ export const updateOnboardingStep = async (stepData: {
   linkedinConnected?: boolean
   stripeSubscribed?: boolean
   cardDetailsAdded?: boolean
+  paymentMethodAdded?: boolean
   onboardingComplete?: boolean
 }) => {
   const { userId } = await auth()
@@ -49,6 +50,7 @@ export const completeOnboarding = async () => {
         linkedinConnected: true,
         stripeSubscribed: true,
         cardDetailsAdded: true,
+        paymentMethodAdded: true,
       },
     })
     return { success: true, metadata: res.publicMetadata }

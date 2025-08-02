@@ -28,7 +28,7 @@ interface PaymentFormProps {
       annual: number;
     };
   };
-  onSuccess: (paymentMethodId: string) => void;
+  onSuccess: (paymentMethodId: string, productId: string) => void;
   onError: (error: string) => void;
   onBack: () => void;
 }
@@ -36,6 +36,21 @@ interface PaymentFormProps {
 interface PaymentFormInnerProps extends PaymentFormProps {
   clientSecret?: string;
 }
+
+// Map plan names to Stripe product IDs
+const getProductId = (planName: string): string => {
+  const planLower = planName.toLowerCase();
+  switch (planLower) {
+    case 'starter':
+      return env.NEXT_PUBLIC_STRIPE_STARTER_PRODUCT_ID;
+    case 'standard':
+      return env.NEXT_PUBLIC_STRIPE_STANDARD_PRODUCT_ID;
+    case 'pro':
+      return env.NEXT_PUBLIC_STRIPE_PRO_PRODUCT_ID;
+    default:
+      throw new Error(`Unknown plan: ${planName}`);
+  }
+};
 
 const PaymentFormInner: React.FC<PaymentFormInnerProps> = ({
   selectedPlan,
@@ -54,18 +69,7 @@ const PaymentFormInner: React.FC<PaymentFormInnerProps> = ({
   const selectedPlanLower = selectedPlan.toLowerCase();
   const planPricing = pricing[selectedPlanLower];
 
-  // Handle free plan (no pricing data needed)
-  if (selectedPlanLower === "free") {
-    // For free plan, show different UI - this shouldn't normally happen in payment flow
-    return (
-      <div className="space-y-4 rounded-lg bg-green-50 p-4">
-        <h3 className="font-semibold text-green-900">Free Plan Selected</h3>
-        <p className="text-green-700 text-sm">
-          You've selected the free plan. No payment information is required.
-        </p>
-      </div>
-    );
-  }
+
 
   if (!planPricing) {
     return (
@@ -116,7 +120,8 @@ const PaymentFormInner: React.FC<PaymentFormInnerProps> = ({
         if (error) {
           onError(error.message || "Payment setup failed");
         } else if (setupIntent?.payment_method) {
-          onSuccess(setupIntent.payment_method as string);
+          const productId = getProductId(selectedPlan);
+          onSuccess(setupIntent.payment_method as string, productId);
         }
       } else {
         // Create payment method directly
@@ -128,7 +133,8 @@ const PaymentFormInner: React.FC<PaymentFormInnerProps> = ({
         if (error) {
           onError(error.message || "Payment method creation failed");
         } else if (paymentMethod) {
-          onSuccess(paymentMethod.id);
+          const productId = getProductId(selectedPlan);
+          onSuccess(paymentMethod.id, productId);
         }
       }
     } catch (error) {
@@ -142,10 +148,11 @@ const PaymentFormInner: React.FC<PaymentFormInnerProps> = ({
     style: {
       base: {
         fontSize: "16px",
-        color: "#424770",
-        "::placeholder": { color: "#aab7c4" },
+        color: "rgba(255, 255, 255, 0.9)", // Light text for dark theme
+        "::placeholder": { color: "rgba(255, 255, 255, 0.5)" }, // Muted placeholder
+        backgroundColor: "transparent",
       },
-      invalid: { color: "#9e2146" },
+      invalid: { color: "#ef4444" }, // Red for errors
     },
     hidePostalCode: true,
   };
@@ -163,65 +170,65 @@ const PaymentFormInner: React.FC<PaymentFormInnerProps> = ({
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Cost Breakdown */}
-          <div className="space-y-4 rounded-lg bg-slate-50 p-4">
-            <h3 className="font-semibold text-slate-900">Cost Breakdown</h3>
+          <div className="space-y-4 rounded-lg glass-subtle p-4">
+            <h3 className="font-semibold text-foreground">Cost Breakdown</h3>
 
             <div className="space-y-3">
               {/* Trial Period */}
-              <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 p-3">
+              <div className="flex items-center justify-between rounded-md glass border border-primary/20 p-3">
                 <div>
-                  <p className="flex items-center gap-2 font-medium text-blue-900">
+                  <p className="flex items-center gap-2 font-medium text-foreground">
                     7-Day Gold Trial
                     <Badge
                       variant="secondary"
-                      className="bg-yellow-100 text-xs text-yellow-800"
+                      className="glass-subtle text-xs"
                     >
                       Premium
                     </Badge>
                   </p>
-                  <p className="text-blue-700 text-sm">
+                  <p className="text-muted-foreground text-sm">
                     All premium features unlocked
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-4xl text-blue-900">$0.00</p>
-                  <p className="text-blue-600 text-xs">Free trial</p>
+                  <p className="font-bold text-4xl text-primary">$0.00</p>
+                  <p className="text-muted-foreground text-xs">Free trial</p>
                 </div>
               </div>
 
               {/* After Trial */}
-              <div className="flex items-center justify-between rounded-md border bg-white p-3">
+              <div className="flex items-center justify-between rounded-md glass border border-border p-3">
                 <div>
-                  <p className="font-medium text-slate-900">
+                  <p className="font-medium text-foreground">
                     After Trial - {selectedPlan} Plan
                   </p>
-                  <p className="text-slate-600 text-sm">
+                  <p className="text-muted-foreground text-sm">
                     Billed {isAnnual ? "annually" : "monthly"}
                     {isAnnual && savings > 0 && (
-                      <span className="ml-1 font-medium text-green-600">
+                      <span className="ml-1 font-medium text-green-400">
                         (Save ${Math.round(savings)}/year)
                       </span>
                     )}
                   </p>
                   {/* Add plan features hint */}
-                  <p className="mt-1 text-slate-500 text-xs">
+                  <p className="mt-1 text-muted-foreground text-xs">
                     {selectedPlanLower === "starter" &&
-                      "1,000 contacts, Advanced messaging"}
-                    {selectedPlanLower === "professional" &&
-                      "5,000 contacts, Team collaboration, Analytics"}
-                    {selectedPlanLower === "enterprise" &&
-                      "Unlimited contacts, Custom integrations, Dedicated support"}
+                      "Unlimited contacts, Basic messaging, Email support"}
+                    {selectedPlanLower === "standard" &&
+                      "Unlimited contacts, Advanced messaging, Priority support"}
+                    {selectedPlanLower === "pro" &&
+                      "Unlimited contacts, AI-powered features, Custom integrations, Dedicated support"}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-slate-900">
+                  <p className="font-bold text-foreground">
                     ${currentPrice}
-                    <span className="font-normal text-slate-600 text-sm">
+                    <span className="font-normal text-muted-foreground text-sm">
                       /{isAnnual ? "year" : "month"}
                     </span>
                   </p>
                   {isAnnual && (
-                    <p className="text-slate-500 text-xs">
+                    <p className="text-muted-foreground text-xs">
                       (~${Math.round(monthlyEquivalent)}/month)
                     </p>
                   )}
@@ -230,12 +237,12 @@ const PaymentFormInner: React.FC<PaymentFormInnerProps> = ({
             </div>
 
             {/* Summary */}
-            <div className="border-slate-200 border-t pt-3">
+            <div className="border-border border-t pt-3">
               <div className="flex items-center justify-between">
-                <p className="font-medium text-slate-900">Today's Charge</p>
-                <p className="font-bold text-5xl text-slate-900">$0.00</p>
+                <p className="font-medium text-foreground">Today's Charge</p>
+                <p className="font-bold text-5xl text-foreground">$0.00</p>
               </div>
-              <p className="mt-1 text-slate-500 text-xs">
+              <p className="mt-1 text-muted-foreground text-xs">
                 First charge will be ${currentPrice} on{" "}
                 {new Date(
                   Date.now() + 7 * 24 * 60 * 60 * 1000
@@ -249,16 +256,16 @@ const PaymentFormInner: React.FC<PaymentFormInnerProps> = ({
             </div>
           </div>
 
-          <div className="rounded-md border p-3">
+          <div className="rounded-md glass-subtle border border-border p-3">
             <CardElement options={cardElementOptions} />
           </div>
 
-          <div className="rounded-md bg-blue-50 p-4">
+          <div className="rounded-md glass border border-primary/20 p-4">
             <div className="flex items-start space-x-2">
-              <CheckIcon className="mt-0.5 h-5 w-5 text-blue-600" />
+              <CheckIcon className="mt-0.5 h-5 w-5 text-primary" />
               <div>
-                <p className="font-medium text-blue-900">Secure Payment</p>
-                <p className="text-blue-700 text-sm">
+                <p className="font-medium text-foreground">Secure Payment</p>
+                <p className="text-muted-foreground text-sm">
                   Your payment information is encrypted and secure. Cancel
                   anytime during the trial period.
                 </p>

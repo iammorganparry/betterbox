@@ -6,7 +6,7 @@ import { UnipileChatService } from "~/services/db/unipile-chat.service";
 import { UnipileMessageService } from "~/services/db/unipile-message.service";
 import { UnipileContactService } from "~/services/db/unipile-contact.service";
 import { ChatFolderService } from "~/services/db/chat-folder.service";
-import { ContactLimitService } from "~/services/db/contact-limit.service";
+
 import { RealtimeService } from "~/services/realtime.service";
 import { InngestMiddleware } from "inngest";
 
@@ -21,7 +21,7 @@ export interface Services {
 	unipileMessageService: UnipileMessageService;
 	unipileContactService: UnipileContactService;
 	chatFolderService: ChatFolderService;
-	contactLimitService: ContactLimitService;
+
 	realtimeService: RealtimeService;
 }
 
@@ -37,7 +37,7 @@ function createServices(database: Database): Services {
 		unipileMessageService: new UnipileMessageService(database),
 		unipileContactService: new UnipileContactService(database),
 		chatFolderService: new ChatFolderService(database),
-		contactLimitService: new ContactLimitService(database),
+
 		realtimeService: new RealtimeService(),
 	};
 }

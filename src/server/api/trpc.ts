@@ -18,7 +18,8 @@ import { UnipileMessageService } from "~/services/db/unipile-message.service";
 import { UnipileContactService } from "~/services/db/unipile-contact.service";
 import { UnipileChatService } from "~/services/db/unipile-chat.service";
 import { ChatFolderService } from "~/services/db/chat-folder.service";
-import { ContactLimitService } from "~/services/db/contact-limit.service";
+import { OnboardingService } from "~/services/db/onboarding.service";
+
 import { RealtimeService } from "~/services/realtime.service";
 import { LinkedInAuthService } from "~/services/linkedin-auth.service";
 import { HistoricalSyncService } from "~/services/unipile/historical-sync";
@@ -49,7 +50,8 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
 		unipileContactService: new UnipileContactService(db),
 		unipileChatService: new UnipileChatService(db),
 		chatFolderService: new ChatFolderService(db),
-		contactLimitService: new ContactLimitService(db),
+		onboardingService: new OnboardingService(db),
+
 		realtimeService: new RealtimeService(),
 		linkedinAuthService: new LinkedInAuthService(),
 		historicalSyncService: new HistoricalSyncService(db),

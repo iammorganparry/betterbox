@@ -1,17 +1,17 @@
-import type { Prisma } from "generated/prisma";
-import type { UnipileAccount } from "./unipile-account";
+import type {
+	unipileMessages,
+	unipileAccounts,
+} from "~/db/schema";
 
-export type UnipileMessage = Prisma.UnipileMessageGetPayload<true>;
+export type UnipileMessage = typeof unipileMessages.$inferSelect;
 
-export type UnipileMessageWithAccount = Prisma.UnipileMessageGetPayload<{
-	include: {
-		unipile_account: true;
-	};
-}>;
+export type UnipileMessageWithAccount = UnipileMessage & {
+	unipile_account: typeof unipileAccounts.$inferSelect;
+};
 
-export type UnipileMessageCreateInput = Prisma.UnipileMessageCreateInput;
+export type UnipileMessageCreateInput = typeof unipileMessages.$inferInsert;
 
-export type UnipileMessageUpdateInput = Prisma.UnipileMessageUpdateInput;
+export type UnipileMessageUpdateInput = Partial<UnipileMessageCreateInput>;
 
 export type UnipileMessageType =
 	| "text"

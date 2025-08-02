@@ -17,6 +17,7 @@ export const env = createEnv({
 		UNIPILE_WEBHOOK_SECRET: z.string().optional(),
 		STRIPE_SECRET_KEY: z.string().min(1),
 		STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
 	},
 
 	/**
@@ -25,6 +26,9 @@ export const env = createEnv({
 	 * `NEXT_PUBLIC_`.
 	 */
 	client: {
+		NEXT_PUBLIC_STRIPE_PRO_PRODUCT_ID: z.string().min(1),
+		NEXT_PUBLIC_STRIPE_STANDARD_PRODUCT_ID: z.string().min(1),
+		NEXT_PUBLIC_STRIPE_STARTER_PRODUCT_ID: z.string().min(1),
 		NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
 		NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1),
 		NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL: z.string().optional(),
@@ -52,6 +56,12 @@ export const env = createEnv({
 			process.env.NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL,
 		NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL:
 			process.env.NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL,
+		NEXT_PUBLIC_STRIPE_PRO_PRODUCT_ID:
+			process.env.NEXT_PUBLIC_STRIPE_PRO_PRODUCT_ID,
+		NEXT_PUBLIC_STRIPE_STANDARD_PRODUCT_ID:
+			process.env.NEXT_PUBLIC_STRIPE_STANDARD_PRODUCT_ID,
+		NEXT_PUBLIC_STRIPE_STARTER_PRODUCT_ID:
+			process.env.NEXT_PUBLIC_STRIPE_STARTER_PRODUCT_ID,
 	},
 	/**
 	 * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

@@ -1,22 +1,20 @@
-import type {
-	Prisma,
-	PrismaClient,
-	UnipileAccount,
-	UnipileAccountStatus,
-	User,
-} from "generated/prisma";
-import { db } from "~/db";
+import { eq, and, desc } from "drizzle-orm";
+import { db, type Database } from "~/db";
+import { unipileAccounts, users } from "~/db/schema";
+import type { unipileAccountStatusEnum } from "~/db/schema";
+
+// Inferred types from Drizzle schema
+export type UnipileAccount = typeof unipileAccounts.$inferSelect;
+export type CreateUnipileAccountData = typeof unipileAccounts.$inferInsert;
+export type UpdateUnipileAccountData = Partial<CreateUnipileAccountData>;
+export type UnipileAccountStatus = typeof unipileAccountStatusEnum.enumValues[number];
 
 export interface UnipileAccountWithUser extends UnipileAccount {
-	user: User;
+	user: typeof users.$inferSelect;
 }
 
-export type CreateUnipileAccountData = Prisma.UnipileAccountCreateInput;
-
-export type UpdateUnipileAccountData = Prisma.UnipileAccountUpdateInput;
-
 export class UnipileAccountService {
-	constructor(private readonly db: PrismaClient) {}
+	constructor(private readonly db: Database) {}
 	/**
 	 * Find a Unipile account by account ID and provider
 	 */
@@ -25,28 +23,42 @@ export class UnipileAccountService {
 		provider: string,
 		includeUser = false,
 	): Promise<UnipileAccountWithUser | UnipileAccount | null> {
-		return await this.db.unipileAccount.findFirst({
-			where: {
-				account_id: accountId,
-				provider,
-				is_deleted: false,
-			},
-			include: includeUser ? { user: true } : undefined,
-		});
+		if (includeUser) {
+			const result = await this.db.query.unipileAccounts.findFirst({
+				where: (unipileAccounts, { and, eq }) => and(
+					eq(unipileAccounts.account_id, accountId),
+					eq(unipileAccounts.provider, provider),
+					eq(unipileAccounts.is_deleted, false)
+				),
+				with: {
+					user: true,
+				},
+			});
+			
+			return result as UnipileAccountWithUser | undefined || null;
+		} else {
+			const result = await this.db.query.unipileAccounts.findFirst({
+				where: (unipileAccounts, { and, eq }) => and(
+					eq(unipileAccounts.account_id, accountId),
+					eq(unipileAccounts.provider, provider),
+					eq(unipileAccounts.is_deleted, false)
+				),
+			});
+			
+			return result || null;
+		}
 	}
 
 	/**
 	 * Find all Unipile accounts for a user
 	 */
 	public async findByUserId(userId: string): Promise<UnipileAccount[]> {
-		return await this.db.unipileAccount.findMany({
-			where: {
-				user_id: userId,
-				is_deleted: false,
-			},
-			orderBy: {
-				created_at: "desc",
-			},
+		return await this.db.query.unipileAccounts.findMany({
+			where: and(
+				eq(unipileAccounts.user_id, userId),
+				eq(unipileAccounts.is_deleted, false)
+			),
+			orderBy: [desc(unipileAccounts.created_at)],
 		});
 	}
 
@@ -57,15 +69,13 @@ export class UnipileAccountService {
 		userId: string,
 		provider: string,
 	): Promise<UnipileAccount[]> {
-		return await this.db.unipileAccount.findMany({
-			where: {
-				user_id: userId,
-				provider,
-				is_deleted: false,
-			},
-			orderBy: {
-				created_at: "desc",
-			},
+		return await this.db.query.unipileAccounts.findMany({
+			where: and(
+				eq(unipileAccounts.user_id, userId),
+				eq(unipileAccounts.provider, provider),
+				eq(unipileAccounts.is_deleted, false)
+			),
+			orderBy: [desc(unipileAccounts.created_at)],
 		});
 	}
 
@@ -73,12 +83,19 @@ export class UnipileAccountService {
 	 * Create a new Unipile account
 	 */
 	public async create(data: CreateUnipileAccountData): Promise<UnipileAccount> {
-		return await this.db.unipileAccount.create({
-			data: {
+		const result = await this.db
+			.insert(unipileAccounts)
+			.values({
 				...data,
 				status: data.status || "connected",
-			},
-		});
+			})
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to create unipile account");
+		}
+
+		return result[0];
 	}
 
 	/**
@@ -88,13 +105,20 @@ export class UnipileAccountService {
 		id: string,
 		data: UpdateUnipileAccountData,
 	): Promise<UnipileAccount> {
-		return await this.db.unipileAccount.update({
-			where: { id },
-			data: {
+		const result = await this.db
+			.update(unipileAccounts)
+			.set({
 				...data,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(eq(unipileAccounts.id, id))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to update unipile account");
+		}
+
+		return result[0];
 	}
 
 	/**
@@ -107,33 +131,43 @@ export class UnipileAccountService {
 		data: CreateUnipileAccountData,
 		updateData: UpdateUnipileAccountData,
 	): Promise<UnipileAccount> {
-		return await this.db.unipileAccount.upsert({
-			where: {
-				user_id_provider_account_id: {
-					user_id: userId,
-					provider,
-					account_id: accountId,
+		const result = await this.db
+			.insert(unipileAccounts)
+			.values(data)
+			.onConflictDoUpdate({
+				target: [unipileAccounts.user_id, unipileAccounts.provider, unipileAccounts.account_id],
+				set: {
+					...updateData,
+					updated_at: new Date(),
 				},
-			},
-			update: {
-				...updateData,
-				updated_at: new Date(),
-			},
-			create: data,
-		});
+			})
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to upsert unipile account");
+		}
+
+		return result[0];
 	}
 
 	/**
 	 * Delete a Unipile account (soft delete)
 	 */
 	public async delete(id: string): Promise<UnipileAccount> {
-		return await this.db.unipileAccount.update({
-			where: { id },
-			data: {
+		const result = await this.db
+			.update(unipileAccounts)
+			.set({
 				is_deleted: true,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(eq(unipileAccounts.id, id))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to delete unipile account");
+		}
+
+		return result[0];
 	}
 
 	/**
@@ -143,24 +177,31 @@ export class UnipileAccountService {
 		id: string,
 		status: UnipileAccountStatus,
 	): Promise<UnipileAccount> {
-		return await this.db.unipileAccount.update({
-			where: { id },
-			data: {
+		const result = await this.db
+			.update(unipileAccounts)
+			.set({
 				status,
 				updated_at: new Date(),
-			},
-		});
+			})
+			.where(eq(unipileAccounts.id, id))
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to update unipile account status");
+		}
+
+		return result[0];
 	}
 
 	/**
 	 * Get account statistics for a user
 	 */
 	public async getAccountStats(userId: string) {
-		const accounts = await this.db.unipileAccount.findMany({
-			where: {
-				user_id: userId,
-				is_deleted: false,
-			},
+		const accounts = await this.db.query.unipileAccounts.findMany({
+			where: and(
+				eq(unipileAccounts.user_id, userId),
+				eq(unipileAccounts.is_deleted, false)
+			),
 		});
 
 		const stats = accounts.reduce(

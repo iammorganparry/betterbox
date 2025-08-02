@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import {
 	createTRPCRouter,
 	protectedProcedure,
 	publicProcedure,
 } from "~/server/api/trpc";
-import { getAllPlanLimits } from "~/config/contact-limits.config";
+
 
 // TODO: This router will work after running the Prisma migration and updating UserService
 export const subscriptionRouter = createTRPCRouter({
@@ -310,23 +311,193 @@ export const subscriptionRouter = createTRPCRouter({
 	}),
 
 	/**
-	 * Get contact limit status
+	 * Get onboarding status - used for client-side enforcement
 	 */
-	getContactLimitStatus: protectedProcedure.query(async ({ ctx }) => {
-		const { contactLimitService } = ctx.services;
+	getOnboardingStatus: protectedProcedure.query(async ({ ctx }) => {
+		const { onboardingService } = ctx.services;
+		
+		const status = await onboardingService.getOnboardingStatus(ctx.userId);
+		
+		if (!status) {
+			// User not found - require onboarding for security
+			return {
+				isRequired: true,
+				isCompleted: false,
+				completedAt: null,
+				paymentMethodAdded: false,
+				requiresOnboarding: true,
+			};
+		}
 
-		const limitStatus = await contactLimitService.getContactLimitStatus(
-			ctx.userId,
-		);
+		const requiresOnboarding = await onboardingService.requiresOnboarding(ctx.userId);
 
-		return limitStatus;
+		return {
+			...status,
+			requiresOnboarding,
+		};
 	}),
 
 	/**
-	 * Get all subscription plans with their contact limits
-	 * Public endpoint for pricing page
+	 * Check if user requires onboarding (simple boolean check)
 	 */
-	getPlanLimits: publicProcedure.query(async () => {
-		return getAllPlanLimits();
+	requiresOnboarding: protectedProcedure.query(async ({ ctx }) => {
+		const { onboardingService } = ctx.services;
+		return await onboardingService.requiresOnboarding(ctx.userId);
 	}),
+
+	/**
+	 * Complete onboarding - CRITICAL: This unlocks app access
+	 */
+	completeOnboarding: protectedProcedure
+		.input(
+			z.object({
+				paymentMethodId: z.string().min(1, "Payment method ID is required"),
+				productId: z.string().min(1, "Product ID is required"),
+				selectedPlan: z.string().min(1, "Selected plan is required"),
+				isAnnual: z.boolean().optional().default(false),
+			})
+		)
+		.mutation(async ({ ctx, input }) => {
+			const { onboardingService, stripeService, userService } = ctx.services;
+
+			console.log(`Completing onboarding for user ${ctx.userId}:`, {
+				paymentMethodId: input.paymentMethodId,
+				productId: input.productId,
+				selectedPlan: input.selectedPlan,
+				isAnnual: input.isAnnual
+			});
+
+			// Check current onboarding status
+			const currentStatus = await onboardingService.getOnboardingStatus(ctx.userId);
+			if (!currentStatus) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "User not found",
+				});
+			}
+
+			// Verify user still requires onboarding
+			if (!currentStatus.isRequired && currentStatus.paymentMethodAdded) {
+				return {
+					success: true,
+					message: "Onboarding already completed",
+					alreadyCompleted: true,
+					completedAt: currentStatus.completedAt,
+				};
+			}
+
+			// Get user details for Stripe customer creation
+			const user = await userService.findById(ctx.userId);
+			if (!user) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "User not found in database",
+				});
+			}
+
+			// Create or get Stripe customer
+			let stripeCustomerId = user.stripe_customer_id;
+			
+			if (!stripeCustomerId) {
+				console.log(`Creating Stripe customer for user ${ctx.userId}`);
+				try {
+					const stripeCustomer = await stripeService.createOrGetCustomer({
+						email: user.email,
+						name: user.first_name && user.last_name 
+							? `${user.first_name} ${user.last_name}` 
+							: user.first_name || user.email,
+						userId: ctx.userId,
+					});
+					
+					stripeCustomerId = stripeCustomer.id;
+					
+					// Update user with Stripe customer ID
+					await userService.update(ctx.userId, {
+						stripe_customer_id: stripeCustomerId,
+					});
+					
+					console.log(`✅ Created Stripe customer ${stripeCustomerId} for user ${ctx.userId}`);
+				} catch (error) {
+					console.error(`Failed to create Stripe customer for user ${ctx.userId}:`, error);
+					throw new TRPCError({
+						code: "INTERNAL_SERVER_ERROR",
+						message: "Failed to create Stripe customer",
+					});
+				}
+			}
+
+			// Attach payment method to customer
+			try {
+				console.log(`Attaching payment method ${input.paymentMethodId} to customer ${stripeCustomerId}`);
+				await stripeService.attachPaymentMethod(input.paymentMethodId, stripeCustomerId);
+				
+				// Set as default payment method
+				await stripeService.setDefaultPaymentMethod(stripeCustomerId, input.paymentMethodId);
+				
+				console.log(`✅ Payment method attached and set as default for customer ${stripeCustomerId}`);
+			} catch (error) {
+				console.error(`Failed to attach payment method for user ${ctx.userId}:`, error);
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to attach payment method to customer",
+				});
+			}
+
+			// CRITICAL: Complete onboarding in database
+			// This is the air-tight gate that unlocks app access
+			const completed = await onboardingService.completeOnboarding(ctx.userId);
+			
+			if (!completed) {
+				console.error(`Failed to complete onboarding for user ${ctx.userId}`);
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to complete onboarding in database",
+				});
+			}
+
+			// Verify completion was successful
+			const verificationStatus = await onboardingService.getOnboardingStatus(ctx.userId);
+			if (!verificationStatus || verificationStatus.isRequired) {
+				console.error(`Onboarding completion verification failed for user ${ctx.userId}`);
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Onboarding completion verification failed",
+				});
+			}
+
+			// Validate integrity after completion
+			const integrity = await onboardingService.validateOnboardingIntegrity(ctx.userId);
+			if (!integrity.isValid) {
+				console.warn(`Onboarding integrity issues after completion for user ${ctx.userId}:`, integrity.issues);
+				// Log but don't fail - data was successfully updated
+			}
+
+			console.log(`✅ Onboarding completed successfully for user ${ctx.userId} with Stripe customer ${stripeCustomerId}`);
+
+			// ✅ COMPLETED:
+			// 1. Created/retrieved Stripe customer
+			// 2. Attached payment method to customer
+			// 3. Set payment method as default
+			// 4. Completed onboarding in database
+			// 
+			// TODO for future implementation:
+			// 1. Create Stripe subscription with productId and trial period
+			// 2. Send welcome email
+			// 3. Trigger analytics events
+			// 4. Set up initial user data
+
+			return {
+				success: true,
+				message: "Onboarding completed successfully",
+				completedAt: verificationStatus.completedAt,
+				data: {
+					paymentMethodId: input.paymentMethodId,
+					productId: input.productId,
+					selectedPlan: input.selectedPlan,
+					isAnnual: input.isAnnual,
+					stripeCustomerId: stripeCustomerId,
+				}
+			};
+		}),
+
 });

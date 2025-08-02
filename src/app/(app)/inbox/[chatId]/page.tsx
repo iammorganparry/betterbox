@@ -14,7 +14,7 @@ import {
 } from "~/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { MessageInput } from "~/components/message-input";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@bprogress/next";
 import { AppHeader } from "~/components/app-header";
 import { SidebarInset } from "~/components/ui/sidebar";
 
@@ -134,56 +134,7 @@ export default function ChatPage() {
     );
   }
 
-  // Check for contact limit restriction error
-  const isContactLimitError =
-    chatError?.data?.code === "FORBIDDEN" &&
-    chatError?.message?.includes("beyond your current plan's limit");
 
-  if (isContactLimitError) {
-    return (
-      <>
-        <AppHeader
-          breadcrumbLabels={{
-            inbox: "Inbox",
-            [chatId]: "Premium Contact",
-          }}
-        />
-        <div className="flex h-full items-center justify-center">
-          <div className="text-center">
-            <div className="mb-4">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
-                <span className="text-2xl text-amber-600">✨</span>
-              </div>
-              <h3 className="mb-2 font-medium text-amber-700 text-lg">
-                Premium Contact
-              </h3>
-              <p className="mx-auto max-w-md text-amber-600 text-sm">
-                This contact is beyond your current plan's limit. Upgrade your
-                subscription to view this conversation and unlock access to all
-                your contacts.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Button
-                onClick={() => router.push("/billing")}
-                className="bg-amber-600 hover:bg-amber-700"
-              >
-                Upgrade Plan
-              </Button>
-              <br />
-              <Button
-                variant="outline"
-                onClick={() => router.push("/inbox")}
-                className="text-sm"
-              >
-                Back to Inbox
-              </Button>
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  }
 
   if (chatLoading) {
     return (
@@ -277,17 +228,15 @@ export default function ChatPage() {
               {messages.map((message: MessageData) => (
                 <div
                   key={message.id}
-                  className={`group flex ${
-                    message.is_outgoing ? "justify-end" : "justify-start"
-                  }`}
+                  className={`group flex ${message.is_outgoing ? "justify-end" : "justify-start"
+                    }`}
                 >
                   <div className="flex max-w-[70%] items-start gap-2">
                     <div
-                      className={`relative rounded-lg px-4 py-2 ${
-                        message.is_outgoing
-                          ? "bg-blue-500 text-white"
-                          : "bg-gray-100 text-gray-900"
-                      }`}
+                      className={`relative rounded-lg px-4 py-2 ${message.is_outgoing
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-100 text-gray-900"
+                        }`}
                     >
                       <p className="text-sm">{message.content}</p>
                       <p className="mt-1 text-xs opacity-70">

@@ -17,7 +17,8 @@ import {
   Linkedin,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter } from "@bprogress/next";
+import { useParams } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { Label } from "~/components/ui/label";
 import {
@@ -101,7 +102,7 @@ interface GroupedChat {
   avatar: string | null;
   initials: string;
   provider: string;
-  isObfuscated?: boolean; // Flag to indicate if this chat is obfuscated due to contact limits
+
 }
 
 interface FolderData {
@@ -175,7 +176,7 @@ const SortableChatItem = ({
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({
       id: mail.email,
-      disabled: mail.isObfuscated, // Disable drag for obfuscated chats
+      disabled: false
     });
 
   const style = {
@@ -190,36 +191,22 @@ const SortableChatItem = ({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative flex w-full items-center border-b last:border-b-0 hover:bg-muted/50 ${
-        selectedChatId === mail.email ? "bg-muted" : ""
-      }`}
+      className={`group relative flex w-full items-center border-b last:border-b-0 hover:bg-muted/50 ${selectedChatId === mail.email ? "bg-muted" : ""
+        }`}
     >
-      {/* Drag Handle - hidden for obfuscated chats */}
-      {!mail.isObfuscated && (
-        <div
-          {...attributes}
-          {...listeners}
-          className="flex cursor-grab items-center px-2 py-4 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
-        >
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
-        </div>
-      )}
+      {/* Drag Handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="flex cursor-grab items-center px-2 py-4 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
+      >
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </div>
 
       <button
         type="button"
         onClick={() => {
-          if (mail.isObfuscated) {
-            // For obfuscated chats, show upgrade prompt instead of navigating
-            toast.info("Unlock this contact to continue", {
-              description: "Discover who's trying to connect with you",
-              action: {
-                label: "Unlock",
-                onClick: () => router.push("/billing"),
-              },
-            });
-          } else {
-            handleChatClick(mail.email, hasUnreadMessages);
-          }
+          handleChatClick(mail.email, hasUnreadMessages);
         }}
         className="flex flex-1 flex-col items-start gap-2 whitespace-nowrap p-4 text-left text-sm leading-tight"
       >
@@ -248,41 +235,7 @@ const SortableChatItem = ({
         </span>
       </button>
 
-      {/* Blur overlay for obfuscated contacts */}
-      {mail.isObfuscated && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-1 text-center">
-            <div className="rounded-full bg-gradient-to-r from-blue-500 to-purple-600 p-1.5">
-              <svg
-                className="h-3 w-3 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                />
-              </svg>
-            </div>
-            <div className="text-center">
-              <p className="font-medium text-gray-900 text-xs">
-                Click to unlock
-              </p>
-              <p className="text-gray-600 text-xs">Reveal this contact</p>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Context menu for chat actions */}
       <div className="p-2 opacity-0 transition-opacity group-hover:opacity-100">
@@ -298,21 +251,9 @@ const SortableChatItem = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {/* Show unlock prompt for obfuscated chats */}
-            {mail.isObfuscated && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  router.push("/billing");
-                }}
-                className="text-blue-600 focus:text-blue-600"
-              >
-                <span className="mr-2 h-4 w-4">🔓</span>
-                Unlock contact
-              </DropdownMenuItem>
-            )}
 
-            {hasUnreadMessages && !mail.isObfuscated && (
+
+            {hasUnreadMessages && (
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
@@ -327,8 +268,8 @@ const SortableChatItem = ({
               </DropdownMenuItem>
             )}
 
-            {/* Folder assignment submenu - disabled for obfuscated chats */}
-            {foldersData && foldersData.length > 0 && !mail.isObfuscated && (
+            {/* Folder assignment submenu */}
+            {foldersData && foldersData.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
@@ -357,8 +298,8 @@ const SortableChatItem = ({
               </DropdownMenu>
             )}
 
-            {/* Remove from folder option - only show when viewing a specific folder and not obfuscated */}
-            {selectedFolderId !== "all" && !mail.isObfuscated && (
+            {/* Remove from folder option - only show when viewing a specific folder */}
+            {selectedFolderId !== "all" && (
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
@@ -378,22 +319,20 @@ const SortableChatItem = ({
               </DropdownMenuItem>
             )}
 
-            {/* Delete option - disabled for obfuscated chats */}
-            {!mail.isObfuscated && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSoftDeleteChat(mail.email, mail.name);
-                }}
-                disabled={deletingChatId === mail.email}
-                className="text-red-600 focus:text-red-600"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {deletingChatId === mail.email
-                  ? "Deleting..."
-                  : "Delete conversation"}
-              </DropdownMenuItem>
-            )}
+            {/* Delete option */}
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSoftDeleteChat(mail.email, mail.name);
+              }}
+              disabled={deletingChatId === mail.email}
+              className="text-red-600 focus:text-red-600"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {deletingChatId === mail.email
+                ? "Deleting..."
+                : "Delete conversation"}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -420,20 +359,18 @@ const DroppableFolder = ({
       ref={setNodeRef}
       onClick={onClick}
       type="button"
-      className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-        isSelected
-          ? "bg-primary text-primary-foreground"
-          : isOver
+      className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isSelected
+        ? "bg-primary text-primary-foreground"
+        : isOver
           ? "bg-muted/70"
           : "hover:bg-muted/50"
-      }`}
+        }`}
     >
       <Folder className="h-4 w-4" />
       <span className="flex-1 text-left">{folder.name}</span>
       <span
-        className={`text-muted-foreground text-xs ${
-          isSelected ? "text-primary-foreground" : ""
-        }`}
+        className={`text-muted-foreground text-xs ${isSelected ? "text-primary-foreground" : ""
+          }`}
       >
         {folder.chat_count}
       </span>
@@ -503,9 +440,7 @@ export default function InboxSidebar() {
 
   console.log("chatsData", chatsData);
 
-  // Fetch contact limit status
-  const { data: contactLimitStatus } =
-    api.subscription.getContactLimitStatus.useQuery();
+
 
   // Auto-load more chats when scrolling near bottom
   useEffect(() => {
@@ -722,18 +657,7 @@ export default function InboxSidebar() {
       const chatId = active.id as string;
       const folderId = over.id as string;
 
-      // Check if the chat is obfuscated - prevent assignment if so
-      const chat = mails.find((mail) => mail.email === chatId);
-      if (chat?.isObfuscated) {
-        toast.info("Unlock this contact to organize", {
-          description: "Premium contacts can't be organized until unlocked",
-          action: {
-            label: "Unlock",
-            onClick: () => router.push("/billing"),
-          },
-        });
-        return;
-      }
+
 
       // Assign chat to folder
       assignChatToFolderMutation.mutate({
@@ -762,8 +686,8 @@ export default function InboxSidebar() {
     selectedFolderId === "all"
       ? typedChats
       : (folderChatsData as unknown as ChatFolderAssignment[])?.map(
-          (assignment) => assignment.chat
-        ) || [];
+        (assignment) => assignment.chat
+      ) || [];
 
   // Filter chats based on selected filter mode
   const filteredChats = chatsToDisplay.filter((chat: ChatData) => {
@@ -791,36 +715,22 @@ export default function InboxSidebar() {
       );
       const contact = attendee?.contact;
 
-      // Check if this chat is obfuscated
-      const isObfuscated =
-        contact?.full_name === "Premium Contact" ||
-        contact?.headline === "Upgrade to view this contact";
-
       // Search criteria
       const searchableFields = [];
 
-      if (!isObfuscated) {
-        // Contact name
-        const contactName = contact?.full_name || contact?.first_name || "";
-        if (contactName) searchableFields.push(contactName.toLowerCase());
+      // Contact name
+      const contactName = contact?.full_name || contact?.first_name || "";
+      if (contactName) searchableFields.push(contactName.toLowerCase());
 
-        // Contact headline
-        const headline = contact?.headline || "";
-        if (headline) searchableFields.push(headline.toLowerCase());
+      // Contact headline
+      const headline = contact?.headline || "";
+      if (headline) searchableFields.push(headline.toLowerCase());
 
-        // Latest message content
-        const latestMessage = chat.unipileMessages?.[0];
-        const messageContent = latestMessage?.content || "";
-        if (
-          messageContent &&
-          !messageContent.includes("Upgrade to view messages")
-        ) {
-          searchableFields.push(messageContent.toLowerCase());
-        }
-      } else {
-        // For obfuscated contacts, allow searching for "premium", "contact", "unlock", etc.
-        // This creates discoverability and FOMO
-        searchableFields.push("premium contact", "unlock", "upgrade", "hidden");
+      // Latest message content
+      const latestMessage = chat.unipileMessages?.[0];
+      const messageContent = latestMessage?.content || "";
+      if (messageContent) {
+        searchableFields.push(messageContent.toLowerCase());
       }
 
       // Check if search term matches any searchable field
@@ -860,47 +770,34 @@ export default function InboxSidebar() {
     const contactName =
       contact?.full_name || contact?.first_name || "Unknown Contact";
 
-    // Check if this chat is obfuscated (contact limits exceeded)
-    const isObfuscated =
-      contact?.full_name === "Premium Contact" ||
-      contact?.headline === "Upgrade to view this contact";
-
     // Get the latest message for teaser
     const latestMessage = chat.unipileMessages?.[0];
     let messageTeaser = latestMessage?.content
       ? latestMessage.content.split(" ").slice(0, 8).join(" ") +
-        (latestMessage.content.split(" ").length > 8 ? "..." : "")
+      (latestMessage.content.split(" ").length > 8 ? "..." : "")
       : "No messages yet";
-
-    // If obfuscated, the message content will also be obfuscated
-    if (
-      isObfuscated &&
-      latestMessage?.content?.includes("Upgrade to view messages")
-    ) {
-      messageTeaser = latestMessage.content;
-    }
 
     return {
       email: chat.id, // Use chat ID as unique identifier
       name: contactName,
       date: chat.last_message_at
         ? formatDistanceToNow(new Date(chat.last_message_at), {
-            addSuffix: true,
-          })
+          addSuffix: true,
+        })
         : "",
       subject: contact?.headline || "",
       teaser: messageTeaser,
-      avatar: isObfuscated ? null : contact?.profile_image_url || null, // Hide avatar for obfuscated contacts
+      avatar: contact?.profile_image_url || null,
       initials: contactName
         ? contactName
-            .split(" ")
-            .map((n: string) => n[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2)
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2)
         : "UC",
       provider: chat.provider,
-      isObfuscated, // Add the obfuscation flag
+
     };
   });
 
@@ -963,37 +860,7 @@ export default function InboxSidebar() {
               </div>
             </div>
 
-            {/* Contact Limit Status */}
-            {contactLimitStatus && (
-              <div
-                className={`mt-3 rounded-md border p-2 text-xs ${
-                  contactLimitStatus.isExceeded
-                    ? "border-amber-200 bg-amber-50 text-amber-700"
-                    : "border-gray-200 bg-gray-50 text-gray-600"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span>
-                    Contacts: {contactLimitStatus.count}/
-                    {contactLimitStatus.limit}
-                  </span>
-                  {contactLimitStatus.isExceeded && (
-                    <button
-                      type="button"
-                      onClick={() => router.push("/billing")}
-                      className="text-amber-600 underline hover:text-amber-800"
-                    >
-                      Upgrade
-                    </button>
-                  )}
-                </div>
-                {contactLimitStatus.isExceeded && (
-                  <div className="mt-1 text-amber-600">
-                    Some contacts are hidden. Upgrade to see all contacts.
-                  </div>
-                )}
-              </div>
-            )}
+
 
             <div className="relative mt-3">
               <Input
@@ -1020,8 +887,8 @@ export default function InboxSidebar() {
                 {mails.length === 0
                   ? "No results found"
                   : mails.length === 1
-                  ? "1 conversation found"
-                  : `${mails.length} conversations found`}
+                    ? "1 conversation found"
+                    : `${mails.length} conversations found`}
               </div>
             )}
           </div>
