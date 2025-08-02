@@ -577,6 +577,9 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 			limit = getCurrentSyncConfig().chat.maxChats, // Use config for chat limit
 		}: UnipileHistoricalSyncRequest = data;
 
+		// allow for 10 seconds to be added to the sync for unipile
+		await step.sleep("sleep-10-seconds", 10000);
+
 		// Find the user and Unipile account
 		const user = await step.run("find-user", async () => {
 			return await userService.findByClerkId(user_id);
