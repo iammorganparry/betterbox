@@ -1,7 +1,6 @@
-import { inngest } from "~/services/inngest";
 import { env } from "~/env";
 import type { UnipileProvider } from "~/types/unipile-account";
-import type { Database } from "~/db";
+import type { Inngest } from "inngest";
 
 export interface TriggerHistoricalSyncData {
 	user_id: string;
@@ -11,13 +10,13 @@ export interface TriggerHistoricalSyncData {
 }
 
 export class HistoricalSyncService {
-	constructor(private readonly db: Database) {}
+	constructor(private readonly inngest: Inngest) {}
 	/**
 	 * Trigger historical message sync for a user's Unipile account
 	 * Call this after a user successfully connects their social account
 	 */
 	public async triggerSync(data: TriggerHistoricalSyncData) {
-		return await inngest.send({
+		return await this.inngest.send({
 			name: "unipile/sync.historical_messages",
 			data: {
 				...data,
@@ -43,7 +42,7 @@ export class HistoricalSyncService {
 			},
 		}));
 
-		return await inngest.send(events);
+		return await this.inngest.send(events);
 	}
 
 	/**
@@ -56,7 +55,7 @@ export class HistoricalSyncService {
 			api_key?: string;
 		},
 	) {
-		return await inngest.send({
+		return await this.inngest.send({
 			name: "unipile/sync.historical_messages",
 			data: {
 				...data,

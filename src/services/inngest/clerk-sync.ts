@@ -18,7 +18,7 @@ export const userCreated = inngest.createFunction(
 		// Extract user data from Clerk webhook
 		const userData = {
 			id: data.id,
-			email: data.email_addresses[0]?.email_address,
+			email: data.email_addresses[0]?.email_address || "",
 			first_name: data.first_name,
 			last_name: data.last_name,
 			image_url: data.image_url,
@@ -50,10 +50,10 @@ export const userCreated = inngest.createFunction(
 			}
 		});
 
-		return { 
-			user, 
+		return {
+			user,
 			message: "User created successfully with onboarding requirement",
-			onboardingRequired: true 
+			onboardingRequired: true,
 		};
 	},
 );
@@ -64,7 +64,7 @@ export const userCreated = inngest.createFunction(
 export const userUpdated = inngest.createFunction(
 	{ id: "user-updated" },
 	{ event: "clerk/user.updated" },
-		async ({ event, step, services }) => {
+	async ({ event, step, services }) => {
 		const db = services.db;
 		const { data } = event;
 

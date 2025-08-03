@@ -542,6 +542,7 @@ export const unipileProfileView = inngest.createFunction(
 );
 
 import type { unipileContentTypeEnum } from "~/db/schema";
+import type { UnipileAccountStatus } from "../db/unipile-account.service";
 /**
  * Enhanced comprehensive inbox sync from Unipile API
  * This function syncs complete LinkedIn inbox including:
@@ -1028,7 +1029,7 @@ export const unipileAccountConnected = inngest.createFunction(
 				user.id,
 				account_id,
 				provider,
-				{ status: status || "connected" },
+				{ status: (status || "connected") as UnipileAccountStatus },
 			);
 		});
 
@@ -1040,8 +1041,8 @@ export const unipileAccountConnected = inngest.createFunction(
 					user_id: user.id,
 					account_id,
 					provider,
-					dsn: process.env.UNIPILE_DSN,
-					api_key: process.env.UNIPILE_API_KEY,
+					dsn: process.env.UNIPILE_DSN || "",
+					api_key: process.env.UNIPILE_API_KEY || "",
 					limit: getCurrentSyncConfig().chat.maxChats,
 				},
 			});
