@@ -10,15 +10,53 @@ export interface UnipileAccountStatusEventData extends UnipileApiAccountStatus {
 	user_identifier: string;
 }
 
-// Message received event schema
+// Message received event schema (based on actual Unipile webhook)
 export interface UnipileMessageReceivedEventData {
 	account_id: string;
-	provider: string;
-	message: UnipileApiMessage;
+	account_info: {
+		feature: string;
+		type: string;
+		user_id: string;
+	};
+	account_type: string; // This is the provider (LINKEDIN, etc.)
+	attachments: Array<{
+		id?: string;
+		url?: string;
+		filename?: string;
+		name?: string;
+		file_size?: number;
+		size?: number;
+		mime_type?: string;
+		type?: string;
+		unavailable?: boolean;
+	}>;
+	attendees: Array<{
+		attendee_id: string;
+		attendee_name: string;
+		attendee_profile_url: string;
+		attendee_provider_id: string;
+	}>;
+	chat_content_type: string | null;
 	chat_id: string;
-	sender?: UnipileApiParticipant;
-	recipient?: UnipileApiParticipant;
-	timestamp?: string;
+	event: string;
+	folder: string[];
+	is_event: number;
+	is_group: boolean;
+	message: string; // The actual message content
+	message_id: string;
+	message_type: string;
+	provider_chat_id: string;
+	provider_message_id: string;
+	quoted: Record<string, unknown> | null;
+	sender: {
+		attendee_id: string;
+		attendee_name: string;
+		attendee_profile_url: string;
+		attendee_provider_id: string;
+	};
+	subject: string | null;
+	timestamp: string;
+	webhook_name: string;
 }
 
 // Message read event schema

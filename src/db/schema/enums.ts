@@ -9,6 +9,14 @@ export const unipileAccountTypeEnum = pgEnum("unipile_account_type", [
 	"FACEBOOK",
 ]);
 
+export const unipileProviderEnum = pgEnum("unipile_provider", [
+	"linkedin",
+	"whatsapp",
+	"telegram",
+	"instagram",
+	"facebook",
+]);
+
 export const unipileAccountStatusEnum = pgEnum("unipile_account_status", [
 	"connected",
 	"disconnected",

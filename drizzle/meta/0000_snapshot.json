@@ -1,11 +1,11 @@
 {
-	"id": "c5b58959-ff8c-49d4-9496-49d350069155",
+	"id": "396df528-ec97-4a59-9bfc-fffa44b89722",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"version": "7",
 	"dialect": "postgresql",
 	"tables": {
-		"public.Message": {
-			"name": "Message",
+		"public.message": {
+			"name": "message",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -74,10 +74,10 @@
 				}
 			},
 			"foreignKeys": {
-				"Message_user_id_User_id_fk": {
-					"name": "Message_user_id_User_id_fk",
-					"tableFrom": "Message",
-					"tableTo": "User",
+				"message_user_id_user_id_fk": {
+					"name": "message_user_id_user_id_fk",
+					"tableFrom": "message",
+					"tableTo": "user",
 					"columnsFrom": ["user_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -90,8 +90,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.Post": {
-			"name": "Post",
+		"public.post": {
+			"name": "post",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -122,8 +122,8 @@
 				}
 			},
 			"indexes": {
-				"Post_name_idx": {
-					"name": "Post_name_idx",
+				"post_name_idx": {
+					"name": "post_name_idx",
 					"columns": [
 						{
 							"expression": "name",
@@ -145,8 +145,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.ProfileView": {
-			"name": "ProfileView",
+		"public.profile_view": {
+			"name": "profile_view",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -192,10 +192,10 @@
 			},
 			"indexes": {},
 			"foreignKeys": {
-				"ProfileView_user_id_User_id_fk": {
-					"name": "ProfileView_user_id_User_id_fk",
-					"tableFrom": "ProfileView",
-					"tableTo": "User",
+				"profile_view_user_id_user_id_fk": {
+					"name": "profile_view_user_id_user_id_fk",
+					"tableFrom": "profile_view",
+					"tableTo": "user",
 					"columnsFrom": ["user_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -208,8 +208,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.Profile": {
-			"name": "Profile",
+		"public.profile": {
+			"name": "profile",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -243,8 +243,8 @@
 			"foreignKeys": {},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {
-				"Profile_linkedin_urn_unique": {
-					"name": "Profile_linkedin_urn_unique",
+				"profile_linkedin_urn_unique": {
+					"name": "profile_linkedin_urn_unique",
 					"nullsNotDistinct": false,
 					"columns": ["linkedin_urn"]
 				}
@@ -253,8 +253,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.UnipileAccount": {
-			"name": "UnipileAccount",
+		"public.unipile_account": {
+			"name": "unipile_account",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -272,7 +272,8 @@
 				},
 				"provider": {
 					"name": "provider",
-					"type": "text",
+					"type": "unipile_provider",
+					"typeSchema": "public",
 					"primaryKey": false,
 					"notNull": true
 				},
@@ -330,10 +331,10 @@
 				}
 			},
 			"foreignKeys": {
-				"UnipileAccount_user_id_User_id_fk": {
-					"name": "UnipileAccount_user_id_User_id_fk",
-					"tableFrom": "UnipileAccount",
-					"tableTo": "User",
+				"unipile_account_user_id_user_id_fk": {
+					"name": "unipile_account_user_id_user_id_fk",
+					"tableFrom": "unipile_account",
+					"tableTo": "user",
 					"columnsFrom": ["user_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -352,8 +353,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.UnipileChat": {
-			"name": "UnipileChat",
+		"public.unipile_chat": {
+			"name": "unipile_chat",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -377,7 +378,8 @@
 				},
 				"provider": {
 					"name": "provider",
-					"type": "text",
+					"type": "unipile_provider",
+					"typeSchema": "public",
 					"primaryKey": false,
 					"notNull": true,
 					"default": "'linkedin'"
@@ -522,10 +524,10 @@
 				}
 			},
 			"foreignKeys": {
-				"UnipileChat_unipile_account_id_UnipileAccount_id_fk": {
-					"name": "UnipileChat_unipile_account_id_UnipileAccount_id_fk",
-					"tableFrom": "UnipileChat",
-					"tableTo": "UnipileAccount",
+				"unipile_chat_unipile_account_id_unipile_account_id_fk": {
+					"name": "unipile_chat_unipile_account_id_unipile_account_id_fk",
+					"tableFrom": "unipile_chat",
+					"tableTo": "unipile_account",
 					"columnsFrom": ["unipile_account_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -544,8 +546,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.UnipileContact": {
-			"name": "UnipileContact",
+		"public.unipile_contact": {
+			"name": "unipile_contact",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -694,10 +696,10 @@
 				}
 			},
 			"foreignKeys": {
-				"UnipileContact_unipile_account_id_UnipileAccount_id_fk": {
-					"name": "UnipileContact_unipile_account_id_UnipileAccount_id_fk",
-					"tableFrom": "UnipileContact",
-					"tableTo": "UnipileAccount",
+				"unipile_contact_unipile_account_id_unipile_account_id_fk": {
+					"name": "unipile_contact_unipile_account_id_unipile_account_id_fk",
+					"tableFrom": "unipile_contact",
+					"tableTo": "unipile_account",
 					"columnsFrom": ["unipile_account_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -716,8 +718,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.User": {
-			"name": "User",
+		"public.user": {
+			"name": "user",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -756,6 +758,26 @@
 					"primaryKey": false,
 					"notNull": false
 				},
+				"onboarding_required": {
+					"name": "onboarding_required",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": true
+				},
+				"onboarding_completed_at": {
+					"name": "onboarding_completed_at",
+					"type": "timestamp",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"payment_method_added": {
+					"name": "payment_method_added",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": true,
+					"default": false
+				},
 				"is_deleted": {
 					"name": "is_deleted",
 					"type": "boolean",
@@ -782,13 +804,13 @@
 			"foreignKeys": {},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {
-				"User_email_unique": {
-					"name": "User_email_unique",
+				"user_email_unique": {
+					"name": "user_email_unique",
 					"nullsNotDistinct": false,
 					"columns": ["email"]
 				},
-				"User_stripe_customer_id_unique": {
-					"name": "User_stripe_customer_id_unique",
+				"user_stripe_customer_id_unique": {
+					"name": "user_stripe_customer_id_unique",
 					"nullsNotDistinct": false,
 					"columns": ["stripe_customer_id"]
 				}
@@ -797,8 +819,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.ChatFolderAssignment": {
-			"name": "ChatFolderAssignment",
+		"public.chat_folder_assignment": {
+			"name": "chat_folder_assignment",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -881,28 +903,28 @@
 				}
 			},
 			"foreignKeys": {
-				"ChatFolderAssignment_chat_id_UnipileChat_id_fk": {
-					"name": "ChatFolderAssignment_chat_id_UnipileChat_id_fk",
-					"tableFrom": "ChatFolderAssignment",
-					"tableTo": "UnipileChat",
+				"chat_folder_assignment_chat_id_unipile_chat_id_fk": {
+					"name": "chat_folder_assignment_chat_id_unipile_chat_id_fk",
+					"tableFrom": "chat_folder_assignment",
+					"tableTo": "unipile_chat",
 					"columnsFrom": ["chat_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
 					"onUpdate": "no action"
 				},
-				"ChatFolderAssignment_folder_id_ChatFolder_id_fk": {
-					"name": "ChatFolderAssignment_folder_id_ChatFolder_id_fk",
-					"tableFrom": "ChatFolderAssignment",
-					"tableTo": "ChatFolder",
+				"chat_folder_assignment_folder_id_chat_folder_id_fk": {
+					"name": "chat_folder_assignment_folder_id_chat_folder_id_fk",
+					"tableFrom": "chat_folder_assignment",
+					"tableTo": "chat_folder",
 					"columnsFrom": ["folder_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
 					"onUpdate": "no action"
 				},
-				"ChatFolderAssignment_assigned_by_id_User_id_fk": {
-					"name": "ChatFolderAssignment_assigned_by_id_User_id_fk",
-					"tableFrom": "ChatFolderAssignment",
-					"tableTo": "User",
+				"chat_folder_assignment_assigned_by_id_user_id_fk": {
+					"name": "chat_folder_assignment_assigned_by_id_user_id_fk",
+					"tableFrom": "chat_folder_assignment",
+					"tableTo": "user",
 					"columnsFrom": ["assigned_by_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -921,8 +943,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.ChatFolder": {
-			"name": "ChatFolder",
+		"public.chat_folder": {
+			"name": "chat_folder",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -1004,10 +1026,10 @@
 				}
 			},
 			"foreignKeys": {
-				"ChatFolder_user_id_User_id_fk": {
-					"name": "ChatFolder_user_id_User_id_fk",
-					"tableFrom": "ChatFolder",
-					"tableTo": "User",
+				"chat_folder_user_id_user_id_fk": {
+					"name": "chat_folder_user_id_user_id_fk",
+					"tableFrom": "chat_folder",
+					"tableTo": "user",
 					"columnsFrom": ["user_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -1026,8 +1048,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.PaymentMethod": {
-			"name": "PaymentMethod",
+		"public.payment_method": {
+			"name": "payment_method",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -1141,10 +1163,10 @@
 				}
 			},
 			"foreignKeys": {
-				"PaymentMethod_subscription_id_Subscription_id_fk": {
-					"name": "PaymentMethod_subscription_id_Subscription_id_fk",
-					"tableFrom": "PaymentMethod",
-					"tableTo": "Subscription",
+				"payment_method_subscription_id_subscription_id_fk": {
+					"name": "payment_method_subscription_id_subscription_id_fk",
+					"tableFrom": "payment_method",
+					"tableTo": "subscription",
 					"columnsFrom": ["subscription_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -1153,8 +1175,8 @@
 			},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {
-				"PaymentMethod_stripe_payment_method_id_unique": {
-					"name": "PaymentMethod_stripe_payment_method_id_unique",
+				"payment_method_stripe_payment_method_id_unique": {
+					"name": "payment_method_stripe_payment_method_id_unique",
 					"nullsNotDistinct": false,
 					"columns": ["stripe_payment_method_id"]
 				}
@@ -1163,8 +1185,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.Subscription": {
-			"name": "Subscription",
+		"public.subscription": {
+			"name": "subscription",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -1300,10 +1322,10 @@
 				}
 			},
 			"foreignKeys": {
-				"Subscription_user_id_User_id_fk": {
-					"name": "Subscription_user_id_User_id_fk",
-					"tableFrom": "Subscription",
-					"tableTo": "User",
+				"subscription_user_id_user_id_fk": {
+					"name": "subscription_user_id_user_id_fk",
+					"tableFrom": "subscription",
+					"tableTo": "user",
 					"columnsFrom": ["user_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -1312,13 +1334,13 @@
 			},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {
-				"Subscription_user_id_unique": {
-					"name": "Subscription_user_id_unique",
+				"subscription_user_id_unique": {
+					"name": "subscription_user_id_unique",
 					"nullsNotDistinct": false,
 					"columns": ["user_id"]
 				},
-				"Subscription_stripe_subscription_id_unique": {
-					"name": "Subscription_stripe_subscription_id_unique",
+				"subscription_stripe_subscription_id_unique": {
+					"name": "subscription_stripe_subscription_id_unique",
 					"nullsNotDistinct": false,
 					"columns": ["stripe_subscription_id"]
 				}
@@ -1327,8 +1349,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.UnipileChatAttendee": {
-			"name": "UnipileChatAttendee",
+		"public.unipile_chat_attendee": {
+			"name": "unipile_chat_attendee",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -1425,19 +1447,19 @@
 				}
 			},
 			"foreignKeys": {
-				"UnipileChatAttendee_chat_id_UnipileChat_id_fk": {
-					"name": "UnipileChatAttendee_chat_id_UnipileChat_id_fk",
-					"tableFrom": "UnipileChatAttendee",
-					"tableTo": "UnipileChat",
+				"unipile_chat_attendee_chat_id_unipile_chat_id_fk": {
+					"name": "unipile_chat_attendee_chat_id_unipile_chat_id_fk",
+					"tableFrom": "unipile_chat_attendee",
+					"tableTo": "unipile_chat",
 					"columnsFrom": ["chat_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
 					"onUpdate": "no action"
 				},
-				"UnipileChatAttendee_contact_id_UnipileContact_id_fk": {
-					"name": "UnipileChatAttendee_contact_id_UnipileContact_id_fk",
-					"tableFrom": "UnipileChatAttendee",
-					"tableTo": "UnipileContact",
+				"unipile_chat_attendee_contact_id_unipile_contact_id_fk": {
+					"name": "unipile_chat_attendee_contact_id_unipile_contact_id_fk",
+					"tableFrom": "unipile_chat_attendee",
+					"tableTo": "unipile_contact",
 					"columnsFrom": ["contact_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -1456,8 +1478,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.UnipileMessageAttachment": {
-			"name": "UnipileMessageAttachment",
+		"public.unipile_message_attachment": {
+			"name": "unipile_message_attachment",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -1620,10 +1642,10 @@
 				}
 			},
 			"foreignKeys": {
-				"UnipileMessageAttachment_message_id_UnipileMessage_id_fk": {
-					"name": "UnipileMessageAttachment_message_id_UnipileMessage_id_fk",
-					"tableFrom": "UnipileMessageAttachment",
-					"tableTo": "UnipileMessage",
+				"unipile_message_attachment_message_id_unipile_message_id_fk": {
+					"name": "unipile_message_attachment_message_id_unipile_message_id_fk",
+					"tableFrom": "unipile_message_attachment",
+					"tableTo": "unipile_message",
 					"columnsFrom": ["message_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -1642,8 +1664,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.UnipileMessage": {
-			"name": "UnipileMessage",
+		"public.unipile_message": {
+			"name": "unipile_message",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -1892,19 +1914,19 @@
 				}
 			},
 			"foreignKeys": {
-				"UnipileMessage_unipile_account_id_UnipileAccount_id_fk": {
-					"name": "UnipileMessage_unipile_account_id_UnipileAccount_id_fk",
-					"tableFrom": "UnipileMessage",
-					"tableTo": "UnipileAccount",
+				"unipile_message_unipile_account_id_unipile_account_id_fk": {
+					"name": "unipile_message_unipile_account_id_unipile_account_id_fk",
+					"tableFrom": "unipile_message",
+					"tableTo": "unipile_account",
 					"columnsFrom": ["unipile_account_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
 					"onUpdate": "no action"
 				},
-				"UnipileMessage_chat_id_UnipileChat_id_fk": {
-					"name": "UnipileMessage_chat_id_UnipileChat_id_fk",
-					"tableFrom": "UnipileMessage",
-					"tableTo": "UnipileChat",
+				"unipile_message_chat_id_unipile_chat_id_fk": {
+					"name": "unipile_message_chat_id_unipile_chat_id_fk",
+					"tableFrom": "unipile_message",
+					"tableTo": "unipile_chat",
 					"columnsFrom": ["chat_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -1923,8 +1945,8 @@
 			"checkConstraints": {},
 			"isRLSEnabled": false
 		},
-		"public.UnipileProfileView": {
-			"name": "UnipileProfileView",
+		"public.unipile_profile_view": {
+			"name": "unipile_profile_view",
 			"schema": "",
 			"columns": {
 				"id": {
@@ -1972,7 +1994,8 @@
 				},
 				"provider": {
 					"name": "provider",
-					"type": "text",
+					"type": "unipile_provider",
+					"typeSchema": "public",
 					"primaryKey": false,
 					"notNull": true,
 					"default": "'linkedin'"
@@ -2113,6 +2136,11 @@
 				"DISTANCE_2",
 				"DISTANCE_3"
 			]
+		},
+		"public.unipile_provider": {
+			"name": "unipile_provider",
+			"schema": "public",
+			"values": ["linkedin", "whatsapp", "telegram", "instagram", "facebook"]
 		}
 	},
 	"schemas": {},

@@ -23,6 +23,7 @@ import {
 	unipileContentTypeEnum,
 	unipileMessageTypeEnum,
 	unipileNetworkDistanceEnum,
+	unipileProviderEnum,
 } from "./enums";
 
 // Post table (legacy)
@@ -105,7 +106,7 @@ export const unipileAccounts = pgTable(
 		user_id: text("user_id")
 			.references(() => users.id)
 			.notNull(),
-		provider: text("provider").notNull(), // "linkedin", "whatsapp", etc.
+		provider: unipileProviderEnum("provider").notNull(), // "linkedin", "whatsapp", etc.
 		account_id: text("account_id").notNull(), // Unipile account ID
 		status: unipileAccountStatusEnum("status").default("connected").notNull(),
 		is_deleted: boolean("is_deleted").default(false).notNull(),
@@ -129,7 +130,7 @@ export const unipileChats = pgTable(
 			.references(() => unipileAccounts.id)
 			.notNull(),
 		external_id: text("external_id").notNull(), // Chat ID from provider
-		provider: text("provider").default("linkedin").notNull(),
+		provider: unipileProviderEnum("provider").default("linkedin").notNull(),
 		account_type: unipileAccountTypeEnum("account_type"),
 		chat_type: unipileChatTypeEnum("chat_type").default("direct").notNull(),
 		name: text("name"), // Chat name (for group chats)

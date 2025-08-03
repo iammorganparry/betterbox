@@ -16,6 +16,7 @@ import {
 	unipileAttachmentTypeEnum,
 	unipileAttendeeTypeEnum,
 	unipileMessageTypeEnum,
+	unipileProviderEnum,
 } from "./enums";
 import {
 	unipileAccounts,
@@ -205,7 +206,7 @@ export const unipileProfileViews = pgTable(
 		viewer_headline: text("viewer_headline"),
 		viewer_image_url: text("viewer_image_url"),
 		viewed_at: timestamp("viewed_at").notNull(),
-		provider: text("provider").default("linkedin").notNull(),
+		provider: unipileProviderEnum("provider").default("linkedin").notNull(),
 		is_deleted: boolean("is_deleted").default(false).notNull(),
 		created_at: timestamp("created_at").defaultNow().notNull(),
 		updated_at: timestamp("updated_at").defaultNow().notNull(),

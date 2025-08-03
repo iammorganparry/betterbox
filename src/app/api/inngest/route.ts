@@ -11,12 +11,12 @@ import {
 	unipileAccountStatusUpdate,
 	unipileBulkMessageSync,
 	unipileHistoricalMessageSync,
-	unipileMessageReceived,
-	unipileProfileView,
 	unipileMessageDeleted,
 	unipileMessageEdited,
 	unipileMessageReaction,
 	unipileMessageRead,
+	unipileMessageReceived,
+	unipileProfileView,
 } from "~/services/inngest/unipile-sync";
 
 // Create an API that serves all sync functions

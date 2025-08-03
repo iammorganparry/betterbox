@@ -18,6 +18,24 @@ import {
 	type unipileMessages,
 } from "~/db/schema";
 
+// Helper function for type mapping using database enums
+const VALID_PROVIDERS = [
+	"linkedin",
+	"whatsapp",
+	"telegram",
+	"instagram",
+	"facebook",
+] as const;
+type ValidProvider = (typeof VALID_PROVIDERS)[number];
+
+const normalizeProvider = (provider: string): ValidProvider => {
+	const normalized = provider.toLowerCase();
+	if (VALID_PROVIDERS.includes(normalized as ValidProvider)) {
+		return normalized as ValidProvider;
+	}
+	return "linkedin"; // default fallback
+};
+
 // Use Drizzle's inferred types
 export type UnipileChat = typeof unipileChats.$inferSelect;
 export type UnipileChatAttendee = typeof unipileChatAttendees.$inferSelect;
@@ -234,7 +252,9 @@ export class UnipileChatService {
 				and(
 					eq(unipileAccounts.user_id, userId),
 					eq(unipileAccounts.is_deleted, false),
-					...(provider ? [eq(unipileAccounts.provider, provider)] : []),
+					...(provider
+						? [eq(unipileAccounts.provider, normalizeProvider(provider))]
+						: []),
 					...whereConditions,
 				),
 			)

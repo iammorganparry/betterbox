@@ -6,6 +6,24 @@ import {
 	users,
 } from "~/db/schema";
 
+// Helper function for type mapping using database enums
+const VALID_PROVIDERS = [
+	"linkedin",
+	"whatsapp",
+	"telegram",
+	"instagram",
+	"facebook",
+] as const;
+type ValidProvider = (typeof VALID_PROVIDERS)[number];
+
+const normalizeProvider = (provider: string): ValidProvider => {
+	const normalized = provider.toLowerCase();
+	if (VALID_PROVIDERS.includes(normalized as ValidProvider)) {
+		return normalized as ValidProvider;
+	}
+	return "linkedin"; // default fallback
+};
+
 // Use Drizzle's inferred types
 export type UnipileAccount = typeof unipileAccounts.$inferSelect;
 export type User = typeof users.$inferSelect;
@@ -72,7 +90,7 @@ export class UnipileAccountService {
 		const whereConditions = [
 			eq(unipileAccounts.user_id, userId),
 			eq(unipileAccounts.account_id, accountId),
-			eq(unipileAccounts.provider, provider),
+			eq(unipileAccounts.provider, normalizeProvider(provider)),
 		];
 
 		if (!include_deleted) {
@@ -120,7 +138,7 @@ export class UnipileAccountService {
 
 		const whereConditions = [
 			eq(unipileAccounts.account_id, accountId),
-			eq(unipileAccounts.provider, provider),
+			eq(unipileAccounts.provider, normalizeProvider(provider)),
 		];
 
 		if (!include_deleted) {
@@ -169,7 +187,7 @@ export class UnipileAccountService {
 		const insertData: CreateAccountData = {
 			user_id: userId,
 			account_id: accountId,
-			provider,
+			provider: normalizeProvider(provider),
 			status: "connected",
 			is_deleted: false,
 			created_at: new Date(),
@@ -216,7 +234,7 @@ export class UnipileAccountService {
 			.where(
 				and(
 					eq(unipileAccounts.account_id, accountId),
-					eq(unipileAccounts.provider, provider),
+					eq(unipileAccounts.provider, normalizeProvider(provider)),
 					eq(unipileAccounts.is_deleted, false),
 				),
 			);
@@ -243,7 +261,7 @@ export class UnipileAccountService {
 			.where(
 				and(
 					eq(unipileAccounts.user_id, userId),
-					eq(unipileAccounts.provider, provider),
+					eq(unipileAccounts.provider, normalizeProvider(provider)),
 					eq(unipileAccounts.account_id, accountId),
 				),
 			)
@@ -266,7 +284,9 @@ export class UnipileAccountService {
 		const whereConditions = [eq(unipileAccounts.user_id, userId)];
 
 		if (provider) {
-			whereConditions.push(eq(unipileAccounts.provider, provider));
+			whereConditions.push(
+				eq(unipileAccounts.provider, normalizeProvider(provider)),
+			);
 		}
 
 		if (!includeDeleted) {
@@ -295,7 +315,7 @@ export class UnipileAccountService {
 				and(
 					eq(unipileAccounts.user_id, userId),
 					eq(unipileAccounts.account_id, accountId),
-					eq(unipileAccounts.provider, provider),
+					eq(unipileAccounts.provider, normalizeProvider(provider)),
 					eq(unipileAccounts.status, "connected"),
 					eq(unipileAccounts.is_deleted, false),
 				),

@@ -14,6 +14,24 @@ export interface UnipileAccountWithUser extends UnipileAccount {
 	user: typeof users.$inferSelect;
 }
 
+// Helper function for type mapping using database enums
+const VALID_PROVIDERS = [
+	"linkedin",
+	"whatsapp",
+	"telegram",
+	"instagram",
+	"facebook",
+] as const;
+type ValidProvider = (typeof VALID_PROVIDERS)[number];
+
+const normalizeProvider = (provider: string): ValidProvider => {
+	const normalized = provider.toLowerCase();
+	if (VALID_PROVIDERS.includes(normalized as ValidProvider)) {
+		return normalized as ValidProvider;
+	}
+	return "linkedin"; // default fallback
+};
+
 export class UnipileAccountService {
 	constructor(private readonly db: Database) {}
 	/**
@@ -29,7 +47,7 @@ export class UnipileAccountService {
 				where: (unipileAccounts, { and, eq }) =>
 					and(
 						eq(unipileAccounts.account_id, accountId),
-						eq(unipileAccounts.provider, provider),
+						eq(unipileAccounts.provider, normalizeProvider(provider)),
 						eq(unipileAccounts.is_deleted, false),
 					),
 				with: {
@@ -43,7 +61,7 @@ export class UnipileAccountService {
 			where: (unipileAccounts, { and, eq }) =>
 				and(
 					eq(unipileAccounts.account_id, accountId),
-					eq(unipileAccounts.provider, provider),
+					eq(unipileAccounts.provider, normalizeProvider(provider)),
 					eq(unipileAccounts.is_deleted, false),
 				),
 		});
@@ -74,7 +92,7 @@ export class UnipileAccountService {
 		return await this.db.query.unipileAccounts.findMany({
 			where: and(
 				eq(unipileAccounts.user_id, userId),
-				eq(unipileAccounts.provider, provider),
+				eq(unipileAccounts.provider, normalizeProvider(provider)),
 				eq(unipileAccounts.is_deleted, false),
 			),
 			orderBy: [desc(unipileAccounts.created_at)],

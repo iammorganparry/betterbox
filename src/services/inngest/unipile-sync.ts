@@ -13,8 +13,47 @@ import type {
 } from "~/types/unipile-api";
 
 import { unipileProfileViews } from "~/db/schema";
+import type {
+	unipileAccountTypeEnum,
+	unipileProviderEnum,
+} from "~/db/schema/enums";
 import { env } from "~/env";
 import type { UnipileContactService } from "../db/unipile-contact.service";
+
+// Helper functions for type mapping using database enums
+const VALID_PROVIDERS = [
+	"linkedin",
+	"whatsapp",
+	"telegram",
+	"instagram",
+	"facebook",
+] as const;
+const VALID_ACCOUNT_TYPES = [
+	"LINKEDIN",
+	"WHATSAPP",
+	"TELEGRAM",
+	"INSTAGRAM",
+	"FACEBOOK",
+] as const;
+
+type ValidProvider = (typeof VALID_PROVIDERS)[number];
+type ValidAccountType = (typeof VALID_ACCOUNT_TYPES)[number];
+
+const normalizeProvider = (provider: string): ValidProvider => {
+	const normalized = provider.toLowerCase();
+	if (VALID_PROVIDERS.includes(normalized as ValidProvider)) {
+		return normalized as ValidProvider;
+	}
+	return "linkedin"; // default fallback
+};
+
+const normalizeAccountType = (provider: string): ValidAccountType => {
+	const normalized = provider.toUpperCase();
+	if (VALID_ACCOUNT_TYPES.includes(normalized as ValidAccountType)) {
+		return normalized as ValidAccountType;
+	}
+	return "LINKEDIN"; // default fallback
+};
 
 /**
  * Helper function to safely fetch complete profile data for a contact
@@ -347,7 +386,13 @@ export const unipileAccountStatusUpdate = inngest.createFunction(
  * Handle new messages from Unipile (real-time)
  */
 export const unipileMessageReceived = inngest.createFunction(
-	{ id: "unipile-message-received" },
+	{
+		id: "unipile-message-received",
+		concurrency: {
+			limit: 1,
+			key: "event.data.chat_id",
+		},
+	},
 	{ event: "unipile/message_received" },
 	async ({ event, step, services }) => {
 		const { data } = event;
@@ -359,21 +404,34 @@ export const unipileMessageReceived = inngest.createFunction(
 			unipileChatService: chatService,
 		} = services;
 
+		// Extract data from the real event structure
 		const {
 			account_id,
-			provider,
-			message,
+			account_type: provider, // account_type is the provider
+			account_info,
+			message_id,
+			provider_message_id,
+			message: messageContent, // message content is directly in 'message' field
 			chat_id,
+			provider_chat_id,
 			sender,
-			recipient,
+			attendees,
 			timestamp,
+			attachments,
+			message_type,
+			is_event,
+			subject,
+			quoted,
+			chat_content_type,
+			folder,
+			is_group,
 		} = data;
 
 		// Find the Unipile account
 		const unipileAccount = await step.run("find-unipile-account", async () => {
 			return await accountService.findUnipileAccountByProvider(
 				account_id,
-				provider,
+				provider.toLowerCase(),
 				{ include_user: true },
 			);
 		});
@@ -383,67 +441,172 @@ export const unipileMessageReceived = inngest.createFunction(
 		}
 
 		// Determine if this is an outgoing message (sent by our user)
-		const isOutgoing = sender?.id === account_id;
+		// Check if sender is the account owner by comparing with account user_id
+		const isOutgoing = sender?.attendee_provider_id === account_info?.user_id;
 
-		// Find the internal chat record by external chat ID
-		const internalChat = await step.run("find-internal-chat", async () => {
-			return await chatService.findChatByExternalId(unipileAccount.id, chat_id);
+		// Step 1: Upsert the chat (create if doesn't exist)
+		const internalChat = await step.run("upsert-chat", async () => {
+			// Try to find existing chat first
+			let existingChat = await chatService.findChatByExternalId(
+				unipileAccount.id,
+				chat_id,
+			);
+
+			if (!existingChat) {
+				// Create new chat if it doesn't exist
+				existingChat = await chatService.upsertChat(
+					unipileAccount.id,
+					chat_id,
+					{
+						name: is_group
+							? "Group Chat"
+							: sender?.attendee_name || "Unknown Contact",
+						chat_type: is_group ? "group" : "direct",
+						last_message_at: timestamp ? new Date(timestamp) : new Date(),
+					},
+					{
+						provider: normalizeProvider(provider),
+						account_type: normalizeAccountType(provider),
+						unread_count: 0,
+						archived: 0,
+						read_only: 0,
+						content_type:
+							chat_content_type === "inmail" ||
+							chat_content_type === "sponsored" ||
+							chat_content_type === "linkedin_offer"
+								? chat_content_type
+								: null,
+					},
+				);
+			}
+
+			return existingChat;
 		});
 
-		// Upsert the message
-		const savedMessage = await step.run("upsert-message", async () => {
-			return await messageService.upsertMessage(unipileAccount.id, message.id, {
-				...(internalChat ? { chat_id: internalChat.id } : {}), // Link to internal chat if found
-				external_chat_id: chat_id, // Store external API chat ID
-				sender_id: sender?.id,
-				recipient_id: recipient?.id,
-				message_type: message.type || "text",
-				content: message.text || message.content,
-				is_read: message.is_read || false,
-				is_outgoing: isOutgoing,
-				sent_at: timestamp ? new Date(timestamp) : new Date(),
-			});
-		});
+		// Step 2: Create/upsert contacts for all attendees (except self)
+		await step.run("upsert-attendees-and-contacts", async () => {
+			for (const attendee of attendees || []) {
+				// Skip if this is the account owner
+				if (attendee.attendee_provider_id === account_info?.user_id) {
+					continue;
+				}
 
-		// If this is a new contact, create enriched contact using profile data
-		if (!isOutgoing && sender?.id) {
-			await step.run("upsert-enriched-contact", async () => {
-				// Create Unipile service instance for profile fetching if enabled
-				if (!syncConfig.enableProfileEnrichment) {
-					// Fallback to basic contact creation if profile enrichment is disabled
-					return await contactService.upsertContact(
+				// Create or update contact
+				let contact = null;
+				if (syncConfig.enableProfileEnrichment) {
+					const unipileService = createUnipileService({
+						apiKey: env.UNIPILE_API_KEY,
+						dsn: env.UNIPILE_DSN,
+					});
+
+					try {
+						contact = await createEnrichedContactFromSender(
+							unipileService,
+							contactService,
+							unipileAccount.id,
+							account_id,
+							attendee.attendee_provider_id,
+							attendee.attendee_name,
+						);
+					} catch (error) {
+						console.warn(
+							"Failed to create enriched contact, falling back to basic:",
+							error,
+						);
+						// Fallback to basic contact creation
+						contact = await contactService.upsertContact(
+							unipileAccount.id,
+							attendee.attendee_provider_id,
+							{
+								full_name: attendee.attendee_name,
+								provider_url: attendee.attendee_profile_url,
+								last_interaction: new Date(),
+							},
+						);
+					}
+				} else {
+					// Basic contact creation
+					contact = await contactService.upsertContact(
 						unipileAccount.id,
-						sender.id,
+						attendee.attendee_provider_id,
 						{
-							full_name: sender.display_name || sender.name,
-							first_name: sender.first_name,
-							last_name: sender.last_name,
-							headline: sender.headline,
-							profile_image_url:
-								sender.profile_picture_url || sender.avatar_url,
-							provider_url: sender.profile_url,
+							full_name: attendee.attendee_name,
+							provider_url: attendee.attendee_profile_url,
 							last_interaction: new Date(),
 						},
 					);
 				}
 
-				const unipileService = createUnipileService({
-					apiKey: env.UNIPILE_API_KEY,
-					dsn: env.UNIPILE_DSN,
-				});
-
-				return await createEnrichedContactFromSender(
-					unipileService,
-					contactService,
-					unipileAccount.id,
-					account_id,
-					sender.id,
-					sender.display_name || sender.name,
+				// Create chat attendee record
+				await chatService.upsertAttendee(
+					internalChat.id,
+					attendee.attendee_provider_id,
+					contact?.id || null,
+					{
+						is_self:
+							attendee.attendee_provider_id === account_info?.user_id ? 1 : 0,
+						hidden: 0,
+					},
 				);
+			}
+		});
+
+		// Step 3: Upsert the message
+		const savedMessage = await step.run("upsert-message", async () => {
+			return await messageService.upsertMessage(unipileAccount.id, message_id, {
+				chat_id: internalChat.id, // Link to internal chat record
+				external_chat_id: chat_id, // Store external API chat ID
+				sender_id: sender?.attendee_provider_id,
+				recipient_id: undefined, // Not provided in this event structure
+				message_type: message_type?.toLowerCase() || "text",
+				content: messageContent,
+				is_read: false, // New messages are unread by default
+				is_outgoing: isOutgoing,
+				sent_at: timestamp ? new Date(timestamp) : new Date(),
+				is_event: is_event || 0,
+				subject: subject,
+				metadata: quoted
+					? { quoted, provider_message_id }
+					: { provider_message_id },
+			});
+		});
+
+		// Step 4: Handle attachments if present
+		if (attachments && attachments.length > 0) {
+			await step.run("upsert-attachments", async () => {
+				for (const attachment of attachments) {
+					const attachmentIndex = attachments.indexOf(attachment);
+					await messageService.upsertAttachment(
+						savedMessage.id,
+						attachment.id || `${savedMessage.id}_${attachmentIndex}`,
+						{
+							url: attachment.url,
+							filename: attachment.filename || attachment.name,
+							file_size: attachment.file_size || attachment.size,
+							mime_type: attachment.mime_type || attachment.type,
+							unavailable: attachment.unavailable || false,
+						},
+						{
+							attachment_type:
+								(attachment.type as
+									| "file"
+									| "img"
+									| "video"
+									| "audio"
+									| "linkedin_post"
+									| "video_meeting") || "file",
+						},
+					);
+				}
 			});
 		}
 
-		return { message: savedMessage, account: unipileAccount };
+		return {
+			message: savedMessage,
+			chat: internalChat,
+			account: unipileAccount,
+			contactsCreated: attendees?.length || 0,
+		};
 	},
 );
 
@@ -451,7 +614,13 @@ export const unipileMessageReceived = inngest.createFunction(
  * Handle message read events from Unipile (real-time)
  */
 export const unipileMessageRead = inngest.createFunction(
-	{ id: "unipile-message-read" },
+	{
+		id: "unipile-message-read",
+		concurrency: {
+			limit: 1,
+			key: "event.data.message_id",
+		},
+	},
 	{ event: "unipile/message_read" },
 	async ({ event, step, services }) => {
 		const { data } = event;
@@ -489,7 +658,13 @@ export const unipileMessageRead = inngest.createFunction(
  * Handle message reactions from Unipile (real-time)
  */
 export const unipileMessageReaction = inngest.createFunction(
-	{ id: "unipile-message-reaction" },
+	{
+		id: "unipile-message-reaction",
+		concurrency: {
+			limit: 1,
+			key: "event.data.message_id",
+		},
+	},
 	{ event: "unipile/message_reaction" },
 	async ({ event, step, services }) => {
 		const { data } = event;
@@ -529,7 +704,13 @@ export const unipileMessageReaction = inngest.createFunction(
  * Handle message edits from Unipile (real-time)
  */
 export const unipileMessageEdited = inngest.createFunction(
-	{ id: "unipile-message-edited" },
+	{
+		id: "unipile-message-edited",
+		concurrency: {
+			limit: 1,
+			key: "event.data.message_id",
+		},
+	},
 	{ event: "unipile/message_edited" },
 	async ({ event, step, services }) => {
 		const { data } = event;
@@ -648,7 +829,7 @@ export const unipileProfileView = inngest.createFunction(
 					viewer_headline: viewer?.headline,
 					viewer_image_url: viewer?.profile_picture_url || viewer?.avatar_url,
 					viewed_at: viewed_at ? new Date(viewed_at) : new Date(),
-					provider,
+					provider: normalizeProvider(provider),
 				})
 				.returning();
 		});
@@ -885,8 +1066,8 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 												: undefined,
 									},
 									{
-										provider: chatData.account_type.toLowerCase(),
-										account_type: chatData.account_type,
+										provider: normalizeProvider(chatData.account_type),
+										account_type: normalizeAccountType(chatData.account_type),
 										unread_count: chatData.unread_count || chatData.unread || 0,
 										archived: chatData.archived || 0,
 										read_only: chatData.read_only || 0,
