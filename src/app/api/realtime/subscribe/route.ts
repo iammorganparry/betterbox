@@ -1,13 +1,13 @@
-import { type NextRequest, NextResponse } from "next/server";
-import { getSubscriptionToken } from "@inngest/realtime";
 import { auth } from "@clerk/nextjs/server";
+import { getSubscriptionToken } from "@inngest/realtime";
+import { type NextRequest, NextResponse } from "next/server";
+import { inngest } from "~/services/inngest";
 import type {
 	SubscriptionTokenRequest,
 	SubscriptionTokenResponse,
 	UserTopics,
 } from "~/types/realtime";
 import { getUserChannelId } from "~/types/realtime";
-import { inngest } from "~/services/inngest";
 
 export async function POST(request: NextRequest) {
 	try {

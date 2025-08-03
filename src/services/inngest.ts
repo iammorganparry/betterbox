@@ -1,5 +1,5 @@
-import { EventSchemas, Inngest } from "inngest";
 import { realtimeMiddleware } from "@inngest/realtime";
+import { EventSchemas, Inngest } from "inngest";
 import { servicesMiddleware } from "~/middleware/services.middleware";
 import type { AppSchemas } from "./inngest/schemas";
 

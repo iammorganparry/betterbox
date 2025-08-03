@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Run typecheck
+echo "🔍 Running TypeScript type check..."
+pnpm typecheck
+
+# Run biome format and check
+echo "🎨 Running Biome format and check..."
+pnpm check:unsafe

@@ -1,13 +1,14 @@
-import { eq, and, desc } from "drizzle-orm";
-import { db, type Database } from "~/db";
-import { unipileAccounts, users } from "~/db/schema";
+import { and, desc, eq } from "drizzle-orm";
+import { type Database, db } from "~/db";
+import { unipileAccounts, type users } from "~/db/schema";
 import type { unipileAccountStatusEnum } from "~/db/schema";
 
 // Inferred types from Drizzle schema
 export type UnipileAccount = typeof unipileAccounts.$inferSelect;
 export type CreateUnipileAccountData = typeof unipileAccounts.$inferInsert;
 export type UpdateUnipileAccountData = Partial<CreateUnipileAccountData>;
-export type UnipileAccountStatus = typeof unipileAccountStatusEnum.enumValues[number];
+export type UnipileAccountStatus =
+	(typeof unipileAccountStatusEnum.enumValues)[number];
 
 export interface UnipileAccountWithUser extends UnipileAccount {
 	user: typeof users.$inferSelect;
@@ -25,28 +26,29 @@ export class UnipileAccountService {
 	): Promise<UnipileAccountWithUser | UnipileAccount | null> {
 		if (includeUser) {
 			const result = await this.db.query.unipileAccounts.findFirst({
-				where: (unipileAccounts, { and, eq }) => and(
-					eq(unipileAccounts.account_id, accountId),
-					eq(unipileAccounts.provider, provider),
-					eq(unipileAccounts.is_deleted, false)
-				),
+				where: (unipileAccounts, { and, eq }) =>
+					and(
+						eq(unipileAccounts.account_id, accountId),
+						eq(unipileAccounts.provider, provider),
+						eq(unipileAccounts.is_deleted, false),
+					),
 				with: {
 					user: true,
 				},
 			});
-			
-			return result as UnipileAccountWithUser | undefined || null;
-		} else {
-			const result = await this.db.query.unipileAccounts.findFirst({
-				where: (unipileAccounts, { and, eq }) => and(
+
+			return (result as UnipileAccountWithUser | undefined) || null;
+		}
+		const result = await this.db.query.unipileAccounts.findFirst({
+			where: (unipileAccounts, { and, eq }) =>
+				and(
 					eq(unipileAccounts.account_id, accountId),
 					eq(unipileAccounts.provider, provider),
-					eq(unipileAccounts.is_deleted, false)
+					eq(unipileAccounts.is_deleted, false),
 				),
-			});
-			
-			return result || null;
-		}
+		});
+
+		return result || null;
 	}
 
 	/**
@@ -56,7 +58,7 @@ export class UnipileAccountService {
 		return await this.db.query.unipileAccounts.findMany({
 			where: and(
 				eq(unipileAccounts.user_id, userId),
-				eq(unipileAccounts.is_deleted, false)
+				eq(unipileAccounts.is_deleted, false),
 			),
 			orderBy: [desc(unipileAccounts.created_at)],
 		});
@@ -73,7 +75,7 @@ export class UnipileAccountService {
 			where: and(
 				eq(unipileAccounts.user_id, userId),
 				eq(unipileAccounts.provider, provider),
-				eq(unipileAccounts.is_deleted, false)
+				eq(unipileAccounts.is_deleted, false),
 			),
 			orderBy: [desc(unipileAccounts.created_at)],
 		});
@@ -135,7 +137,11 @@ export class UnipileAccountService {
 			.insert(unipileAccounts)
 			.values(data)
 			.onConflictDoUpdate({
-				target: [unipileAccounts.user_id, unipileAccounts.provider, unipileAccounts.account_id],
+				target: [
+					unipileAccounts.user_id,
+					unipileAccounts.provider,
+					unipileAccounts.account_id,
+				],
 				set: {
 					...updateData,
 					updated_at: new Date(),
@@ -200,7 +206,7 @@ export class UnipileAccountService {
 		const accounts = await this.db.query.unipileAccounts.findMany({
 			where: and(
 				eq(unipileAccounts.user_id, userId),
-				eq(unipileAccounts.is_deleted, false)
+				eq(unipileAccounts.is_deleted, false),
 			),
 		});
 

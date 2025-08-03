@@ -5,49 +5,67 @@
 
 /* Frosted Glass Utilities using Tailwind's backdrop-blur */
 @layer utilities {
-  .glass {
-    @apply backdrop-blur-xl bg-white/10 border border-white/20 shadow-lg shadow-black/5;
-  }
-  
-  .glass-strong {
-    @apply backdrop-blur-2xl bg-white/15 border border-white/25 shadow-xl shadow-black/10;
-  }
-  
-  .glass-subtle {
-    @apply backdrop-blur-lg bg-white/5 border border-white/10 shadow-md shadow-black/5;
-  }
-  
-  .glass-card {
-    @apply backdrop-blur-xl bg-white/8 border border-white/15 shadow-2xl shadow-black/20;
-  }
-  
-  .glass-white {
-    @apply backdrop-blur-lg bg-white/90 border border-white/40 shadow-lg shadow-black/10;
-  }
-  
-  .gradient-orb-pink {
-    background: radial-gradient(circle, rgba(255, 102, 196, 0.8) 0%, rgba(255, 102, 196, 0.3) 40%, transparent 70%);
-  }
-  
-  .gradient-orb-purple {
-    background: radial-gradient(circle, rgba(168, 85, 247, 0.8) 0%, rgba(168, 85, 247, 0.3) 40%, transparent 70%);
-  }
-  
-  .gradient-orb-blue {
-    background: radial-gradient(circle, rgba(59, 130, 246, 0.8) 0%, rgba(59, 130, 246, 0.3) 40%, transparent 70%);
-  }
+	.glass {
+		@apply backdrop-blur-xl bg-white/10 border border-white/20 shadow-lg shadow-black/5;
+	}
 
-  /* Global gradient background utility - for components that need explicit background */
-  .app-background {
-    background: var(--background);
-    background-image: 
-      radial-gradient(at 20% 80%, rgba(255, 102, 196, 0.15) 0%, transparent 50%),
-      radial-gradient(at 80% 20%, rgba(168, 85, 247, 0.15) 0%, transparent 50%),
-      radial-gradient(at 40% 40%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
-    background-attachment: fixed;
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-  }
+	.glass-strong {
+		@apply backdrop-blur-2xl bg-white/15 border border-white/25 shadow-xl shadow-black/10;
+	}
+
+	.glass-subtle {
+		@apply backdrop-blur-lg bg-white/5 border border-white/10 shadow-md shadow-black/5;
+	}
+
+	.glass-card {
+		@apply backdrop-blur-xl bg-white/8 border border-white/15 shadow-2xl shadow-black/20;
+	}
+
+	.glass-white {
+		@apply backdrop-blur-lg bg-white/90 border border-white/40 shadow-lg shadow-black/10;
+	}
+
+	.gradient-orb-pink {
+		background: radial-gradient(
+			circle,
+			rgba(255, 102, 196, 0.8) 0%,
+			rgba(255, 102, 196, 0.3) 40%,
+			transparent 70%
+		);
+	}
+
+	.gradient-orb-purple {
+		background: radial-gradient(
+			circle,
+			rgba(168, 85, 247, 0.8) 0%,
+			rgba(168, 85, 247, 0.3) 40%,
+			transparent 70%
+		);
+	}
+
+	.gradient-orb-blue {
+		background: radial-gradient(
+			circle,
+			rgba(59, 130, 246, 0.8) 0%,
+			rgba(59, 130, 246, 0.3) 40%,
+			transparent 70%
+		);
+	}
+
+	/* Global gradient background utility - for components that need explicit background */
+	.app-background {
+		background: var(--background);
+		background-image: radial-gradient(
+				at 20% 80%,
+				rgba(255, 102, 196, 0.15) 0%,
+				transparent 50%
+			),
+			radial-gradient(at 80% 20%, rgba(168, 85, 247, 0.15) 0%, transparent 50%),
+			radial-gradient(at 40% 40%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+		background-attachment: fixed;
+		background-repeat: no-repeat;
+		background-size: 100% 100%;
+	}
 }
 
 @theme {
@@ -92,8 +110,6 @@
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-ring: var(--sidebar-ring);
 }
-
-
 
 /* Dark theme as default - frosted glass friendly */
 :root {
@@ -168,27 +184,32 @@
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
+	* {
+		@apply border-border outline-ring/50;
 	}
-  body {
-    @apply bg-background text-foreground relative min-h-screen;
-    background-image: 
-      radial-gradient(at 20% 80%, rgba(255, 102, 196, 0.15) 0%, transparent 50%),
-      radial-gradient(at 80% 20%, rgba(168, 85, 247, 0.15) 0%, transparent 50%),
-      radial-gradient(at 40% 40%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
-    background-attachment: fixed;
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
+	body {
+		@apply bg-background text-foreground relative min-h-screen;
+		background-image: radial-gradient(
+				at 20% 80%,
+				rgba(255, 102, 196, 0.15) 0%,
+				transparent 50%
+			),
+			radial-gradient(at 80% 20%, rgba(168, 85, 247, 0.15) 0%, transparent 50%),
+			radial-gradient(at 40% 40%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+		background-attachment: fixed;
+		background-repeat: no-repeat;
+		background-size: 100% 100%;
 	}
 
-  /* Ensure main content areas don't override the background */
-  main, .main, [data-main] {
-    background: transparent !important;
-  }
+	/* Ensure main content areas don't override the background */
+	main,
+	.main,
+	[data-main] {
+		background: transparent !important;
+	}
 
-  /* Sidebar should have its own background but not override body */
-  [data-sidebar="sidebar"] {
-    background: var(--sidebar);
-  }
+	/* Sidebar should have its own background but not override body */
+	[data-sidebar="sidebar"] {
+		background: var(--sidebar);
+	}
 }

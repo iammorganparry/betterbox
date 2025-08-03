@@ -1,7 +1,7 @@
 import type {
+	unipileAccountStatusEnum,
 	unipileAccounts,
 	users,
-	unipileAccountStatusEnum,
 } from "~/db/schema";
 
 export type UnipileAccount = typeof unipileAccounts.$inferSelect;

@@ -1,17 +1,17 @@
-import { sql, eq, and } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import {
+	type SubscriptionPlan,
+	getContactLimitForPlan,
+} from "~/config/contact-limits.config";
 import type { db } from "~/db";
 import {
 	subscriptions,
 	unipileAccounts,
+	type unipileChatAttendees,
+	type unipileChats,
 	unipileContacts,
 	unipileMessages,
-	type unipileChats,
-	type unipileChatAttendees,
 } from "~/db/schema";
-import {
-	getContactLimitForPlan,
-	type SubscriptionPlan,
-} from "~/config/contact-limits.config";
 import type { ChatWithDetails } from "./unipile-chat.service";
 
 export interface ContactLimitStatus {

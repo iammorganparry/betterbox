@@ -1,8 +1,8 @@
-import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+import { env } from "~/env";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { createUnipileService } from "~/services/unipile/unipile.service";
-import { env } from "~/env";
 
 export const inboxRouter = createTRPCRouter({
 	/**
@@ -17,7 +17,7 @@ export const inboxRouter = createTRPCRouter({
 			}),
 		)
 		.query(async ({ ctx, input }) => {
-						try {
+			try {
 				const result =
 					await ctx.services.unipileChatService.getChatsByUserPaginated(
 						ctx.userId,
@@ -77,8 +77,6 @@ export const inboxRouter = createTRPCRouter({
 						message: "You can only view your own chats",
 					});
 				}
-
-
 
 				const messages =
 					await ctx.services.unipileMessageService.getMessagesByChat(
@@ -244,8 +242,6 @@ export const inboxRouter = createTRPCRouter({
 					});
 				}
 
-
-
 				return chatDetails;
 			} catch (error) {
 				if (error instanceof TRPCError) {
@@ -297,8 +293,6 @@ export const inboxRouter = createTRPCRouter({
 						message: "You can only mark your own chats as read",
 					});
 				}
-
-
 
 				// Skip if already read (unread_count is 0)
 				if (chat.unread_count === 0) {
@@ -489,8 +483,6 @@ export const inboxRouter = createTRPCRouter({
 						message: "You can only send messages to your own chats",
 					});
 				}
-
-
 
 				// Check if the chat is read-only
 				if (chat.read_only === 1) {

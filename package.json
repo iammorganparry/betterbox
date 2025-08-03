@@ -7,7 +7,7 @@
 		"build": "dotenv -e .env -- next build",
 		"check": "biome check .",
 		"check:unsafe": "biome check --write --unsafe .",
-		"check:write": "biome check --write .",
+		"check:write": "biome check --write --fix .",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:push": "drizzle-kit push",
@@ -22,7 +22,8 @@
 		"test": "vitest",
 		"test:run": "vitest run",
 		"test:coverage": "vitest run --coverage",
-		"test:ui": "vitest --ui"
+		"test:ui": "vitest --ui",
+		"prepare": "husky"
 	},
 	"dependencies": {
 		"@bprogress/next": "^3.2.12",
@@ -88,6 +89,7 @@
 		"@vitejs/plugin-react": "4.7.0",
 		"dotenv-cli": "^10.0.0",
 		"drizzle-kit": "^0.29.1",
+		"husky": "^9.1.7",
 		"jsdom": "26.1.0",
 		"postcss": "^8.5.3",
 		"tailwindcss": "^4.0.15",

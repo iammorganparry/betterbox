@@ -2,20 +2,20 @@ import type { AxiosInstance } from "axios";
 import axios from "axios";
 import { createUnipileClient } from "~/lib/http";
 import type {
-	UnipileApiResponse,
+	UnipileApiAttachment,
 	UnipileApiChat,
-	UnipileApiMessage,
-	UnipileApiParticipant,
 	UnipileApiChatAttendee,
 	UnipileApiChatWithAttendees,
-	UnipileApiSendMessageRequest,
-	UnipileApiSendMessageResponse,
+	UnipileApiMessage,
+	UnipileApiParticipant,
 	UnipileApiPatchChatRequest,
 	UnipileApiPatchChatResponse,
+	UnipileApiResponse,
+	UnipileApiSendMessageRequest,
+	UnipileApiSendMessageResponse,
+	UnipileApiUserProfile,
 	UnipileSearchRequest,
 	UnipileSearchResponse,
-	UnipileApiAttachment,
-	UnipileApiUserProfile,
 } from "~/types/unipile-api";
 
 export interface UnipileClientConfig {

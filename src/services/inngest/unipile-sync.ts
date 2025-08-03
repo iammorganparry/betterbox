@@ -1,20 +1,20 @@
 import { inngest } from "../inngest";
 import { createUnipileService } from "../unipile/unipile.service";
 
-import type {
-	UnipileApiMessage,
-	UnipileApiAccountStatus,
-	UnipileHistoricalSyncRequest,
-	UnipileApiChatAttendee,
-	UnipileApiUserProfile,
-} from "~/types/unipile-api";
+import { getCurrentSyncConfig, logSyncConfig } from "~/config/sync.config";
 import type { AccountStatusEvent } from "~/types/realtime";
 import { getUserChannelId } from "~/types/realtime";
-import { getCurrentSyncConfig, logSyncConfig } from "~/config/sync.config";
+import type {
+	UnipileApiAccountStatus,
+	UnipileApiChatAttendee,
+	UnipileApiMessage,
+	UnipileApiUserProfile,
+	UnipileHistoricalSyncRequest,
+} from "~/types/unipile-api";
 
-import type { UnipileContactService } from "../db/unipile-contact.service";
-import { env } from "~/env";
 import { unipileProfileViews } from "~/db/schema";
+import { env } from "~/env";
+import type { UnipileContactService } from "../db/unipile-contact.service";
 
 /**
  * Helper function to safely fetch complete profile data for a contact

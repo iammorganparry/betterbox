@@ -1,10 +1,10 @@
 import type {
-	UserTopics,
+	AccountStatusEvent,
+	ContactUpdateEvent,
 	MessageNewEvent,
 	MessageSyncEvent,
-	AccountStatusEvent,
 	ProfileViewEvent,
-	ContactUpdateEvent,
+	UserTopics,
 } from "~/types/realtime";
 import { getUserChannelId } from "~/types/realtime";
 

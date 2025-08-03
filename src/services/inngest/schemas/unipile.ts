@@ -1,8 +1,8 @@
 import type {
-	UnipileApiMessage,
 	UnipileApiAccountStatus,
-	UnipileHistoricalSyncRequest,
+	UnipileApiMessage,
 	UnipileApiParticipant,
+	UnipileHistoricalSyncRequest,
 } from "~/types/unipile-api";
 
 // Account status update event schema

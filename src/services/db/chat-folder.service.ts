@@ -1,8 +1,8 @@
-import { eq, and, desc, asc, count, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import type { db } from "~/db";
 import {
-	chatFolders,
 	chatFolderAssignments,
+	chatFolders,
 	type unipileChats,
 } from "~/db/schema";
 import type { ChatWithDetails } from "./unipile-chat.service";

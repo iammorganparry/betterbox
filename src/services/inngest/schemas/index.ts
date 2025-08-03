@@ -1,6 +1,6 @@
 import type { ClerkSchemas } from "./clerk";
-import type { UnipileSchemas } from "./unipile";
 import type { RealtimeSchemas } from "./realtime";
+import type { UnipileSchemas } from "./unipile";
 
 // Export individual schema types for easier access
 export type { ClerkSchemas } from "./clerk";

@@ -1,6 +1,6 @@
-import { inngest } from "../inngest";
 import { eq } from "drizzle-orm";
-import { users, messages, profileViews } from "~/db/schema";
+import { messages, profileViews, users } from "~/db/schema";
+import { inngest } from "../inngest";
 
 type CreateUserData = typeof users.$inferInsert;
 type UpdateUserData = Partial<CreateUserData>;

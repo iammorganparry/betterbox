@@ -1,14 +1,14 @@
 import type { Database } from "~/db";
 import { db } from "~/db";
-import { UserService } from "~/services/db/user.service";
+import { ChatFolderService } from "~/services/db/chat-folder.service";
 import { UnipileAccountService } from "~/services/db/unipile-account.service";
 import { UnipileChatService } from "~/services/db/unipile-chat.service";
-import { UnipileMessageService } from "~/services/db/unipile-message.service";
 import { UnipileContactService } from "~/services/db/unipile-contact.service";
-import { ChatFolderService } from "~/services/db/chat-folder.service";
+import { UnipileMessageService } from "~/services/db/unipile-message.service";
+import { UserService } from "~/services/db/user.service";
 
-import { RealtimeService } from "~/services/realtime.service";
 import { InngestMiddleware } from "inngest";
+import { RealtimeService } from "~/services/realtime.service";
 
 /**
  * Services that will be injected into Inngest functions

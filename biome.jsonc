@@ -5,7 +5,21 @@
 		"clientKind": "git",
 		"useIgnoreFile": true
 	},
-	"files": { "ignoreUnknown": false, "ignore": [] },
+	"files": {
+		"ignoreUnknown": false,
+		"ignore": [
+			// test files
+			"**/*.test.ts",
+			"**/*.test.tsx",
+			"**/*.spec.ts",
+			"**/*.spec.tsx",
+			"**/*.test.js",
+			"**/*.test.jsx",
+			"**/*.spec.js",
+			// setup
+			"**/mocks/**"
+		]
+	},
 	"formatter": { "enabled": true },
 	"organizeImports": { "enabled": true },
 	"linter": {

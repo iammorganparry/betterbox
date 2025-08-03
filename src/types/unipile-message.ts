@@ -1,7 +1,4 @@
-import type {
-	unipileMessages,
-	unipileAccounts,
-} from "~/db/schema";
+import type { unipileAccounts, unipileMessages } from "~/db/schema";
 
 export type UnipileMessage = typeof unipileMessages.$inferSelect;
 

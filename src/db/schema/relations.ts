@@ -1,23 +1,23 @@
 import { relations } from "drizzle-orm";
 import {
-	users,
-	posts,
-	profiles,
-	profileViews,
 	messages,
+	posts,
+	profileViews,
+	profiles,
 	unipileAccounts,
 	unipileChats,
 	unipileContacts,
+	users,
 } from "./tables";
 import {
-	unipileChatAttendees,
-	unipileMessages,
-	unipileMessageAttachments,
-	chatFolders,
 	chatFolderAssignments,
-	unipileProfileViews,
-	subscriptions,
+	chatFolders,
 	paymentMethods,
+	subscriptions,
+	unipileChatAttendees,
+	unipileMessageAttachments,
+	unipileMessages,
+	unipileProfileViews,
 } from "./tables2";
 
 // User relations

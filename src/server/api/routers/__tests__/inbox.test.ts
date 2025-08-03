@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TRPCError } from "@trpc/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Create mock functions that will be used throughout tests
 const mockPatchChat = vi.fn();
@@ -33,10 +33,10 @@ vi.mock("~/env", () => ({
 	},
 }));
 
+import type { ContactLimitService } from "~/services/db/contact-limit.service";
+import type { UnipileChatService } from "~/services/db/unipile-chat.service";
 // Import types after mocks
 import type { UnipileService } from "~/services/unipile/unipile.service";
-import type { UnipileChatService } from "~/services/db/unipile-chat.service";
-import type { ContactLimitService } from "~/services/db/contact-limit.service";
 
 // Import the router AFTER mocks are set up
 import { inboxRouter } from "../inbox";

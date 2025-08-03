@@ -1,11 +1,10 @@
-import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
 import {
 	createTRPCRouter,
 	protectedProcedure,
 	publicProcedure,
 } from "~/server/api/trpc";
-
 
 // TODO: This router will work after running the Prisma migration and updating UserService
 export const subscriptionRouter = createTRPCRouter({
@@ -315,9 +314,9 @@ export const subscriptionRouter = createTRPCRouter({
 	 */
 	getOnboardingStatus: protectedProcedure.query(async ({ ctx }) => {
 		const { onboardingService } = ctx.services;
-		
+
 		const status = await onboardingService.getOnboardingStatus(ctx.userId);
-		
+
 		if (!status) {
 			// User not found - require onboarding for security
 			return {
@@ -329,7 +328,9 @@ export const subscriptionRouter = createTRPCRouter({
 			};
 		}
 
-		const requiresOnboarding = await onboardingService.requiresOnboarding(ctx.userId);
+		const requiresOnboarding = await onboardingService.requiresOnboarding(
+			ctx.userId,
+		);
 
 		return {
 			...status,
@@ -355,7 +356,7 @@ export const subscriptionRouter = createTRPCRouter({
 				productId: z.string().min(1, "Product ID is required"),
 				selectedPlan: z.string().min(1, "Selected plan is required"),
 				isAnnual: z.boolean().optional().default(false),
-			})
+			}),
 		)
 		.mutation(async ({ ctx, input }) => {
 			const { onboardingService, stripeService, userService } = ctx.services;
@@ -364,11 +365,13 @@ export const subscriptionRouter = createTRPCRouter({
 				paymentMethodId: input.paymentMethodId,
 				productId: input.productId,
 				selectedPlan: input.selectedPlan,
-				isAnnual: input.isAnnual
+				isAnnual: input.isAnnual,
 			});
 
 			// Check current onboarding status
-			const currentStatus = await onboardingService.getOnboardingStatus(ctx.userId);
+			const currentStatus = await onboardingService.getOnboardingStatus(
+				ctx.userId,
+			);
 			if (!currentStatus) {
 				throw new TRPCError({
 					code: "NOT_FOUND",
@@ -397,28 +400,34 @@ export const subscriptionRouter = createTRPCRouter({
 
 			// Create or get Stripe customer
 			let stripeCustomerId = user.stripe_customer_id;
-			
+
 			if (!stripeCustomerId) {
 				console.log(`Creating Stripe customer for user ${ctx.userId}`);
 				try {
 					const stripeCustomer = await stripeService.createOrGetCustomer({
 						email: user.email,
-						name: user.first_name && user.last_name 
-							? `${user.first_name} ${user.last_name}` 
-							: user.first_name || user.email,
+						name:
+							user.first_name && user.last_name
+								? `${user.first_name} ${user.last_name}`
+								: user.first_name || user.email,
 						userId: ctx.userId,
 					});
-					
+
 					stripeCustomerId = stripeCustomer.id;
-					
+
 					// Update user with Stripe customer ID
 					await userService.update(ctx.userId, {
 						stripe_customer_id: stripeCustomerId,
 					});
-					
-					console.log(`✅ Created Stripe customer ${stripeCustomerId} for user ${ctx.userId}`);
+
+					console.log(
+						`✅ Created Stripe customer ${stripeCustomerId} for user ${ctx.userId}`,
+					);
 				} catch (error) {
-					console.error(`Failed to create Stripe customer for user ${ctx.userId}:`, error);
+					console.error(
+						`Failed to create Stripe customer for user ${ctx.userId}:`,
+						error,
+					);
 					throw new TRPCError({
 						code: "INTERNAL_SERVER_ERROR",
 						message: "Failed to create Stripe customer",
@@ -428,15 +437,28 @@ export const subscriptionRouter = createTRPCRouter({
 
 			// Attach payment method to customer
 			try {
-				console.log(`Attaching payment method ${input.paymentMethodId} to customer ${stripeCustomerId}`);
-				await stripeService.attachPaymentMethod(input.paymentMethodId, stripeCustomerId);
-				
+				console.log(
+					`Attaching payment method ${input.paymentMethodId} to customer ${stripeCustomerId}`,
+				);
+				await stripeService.attachPaymentMethod(
+					input.paymentMethodId,
+					stripeCustomerId,
+				);
+
 				// Set as default payment method
-				await stripeService.setDefaultPaymentMethod(stripeCustomerId, input.paymentMethodId);
-				
-				console.log(`✅ Payment method attached and set as default for customer ${stripeCustomerId}`);
+				await stripeService.setDefaultPaymentMethod(
+					stripeCustomerId,
+					input.paymentMethodId,
+				);
+
+				console.log(
+					`✅ Payment method attached and set as default for customer ${stripeCustomerId}`,
+				);
 			} catch (error) {
-				console.error(`Failed to attach payment method for user ${ctx.userId}:`, error);
+				console.error(
+					`Failed to attach payment method for user ${ctx.userId}:`,
+					error,
+				);
 				throw new TRPCError({
 					code: "INTERNAL_SERVER_ERROR",
 					message: "Failed to attach payment method to customer",
@@ -446,7 +468,7 @@ export const subscriptionRouter = createTRPCRouter({
 			// CRITICAL: Complete onboarding in database
 			// This is the air-tight gate that unlocks app access
 			const completed = await onboardingService.completeOnboarding(ctx.userId);
-			
+
 			if (!completed) {
 				console.error(`Failed to complete onboarding for user ${ctx.userId}`);
 				throw new TRPCError({
@@ -456,9 +478,13 @@ export const subscriptionRouter = createTRPCRouter({
 			}
 
 			// Verify completion was successful
-			const verificationStatus = await onboardingService.getOnboardingStatus(ctx.userId);
+			const verificationStatus = await onboardingService.getOnboardingStatus(
+				ctx.userId,
+			);
 			if (!verificationStatus || verificationStatus.isRequired) {
-				console.error(`Onboarding completion verification failed for user ${ctx.userId}`);
+				console.error(
+					`Onboarding completion verification failed for user ${ctx.userId}`,
+				);
 				throw new TRPCError({
 					code: "INTERNAL_SERVER_ERROR",
 					message: "Onboarding completion verification failed",
@@ -466,20 +492,27 @@ export const subscriptionRouter = createTRPCRouter({
 			}
 
 			// Validate integrity after completion
-			const integrity = await onboardingService.validateOnboardingIntegrity(ctx.userId);
+			const integrity = await onboardingService.validateOnboardingIntegrity(
+				ctx.userId,
+			);
 			if (!integrity.isValid) {
-				console.warn(`Onboarding integrity issues after completion for user ${ctx.userId}:`, integrity.issues);
+				console.warn(
+					`Onboarding integrity issues after completion for user ${ctx.userId}:`,
+					integrity.issues,
+				);
 				// Log but don't fail - data was successfully updated
 			}
 
-			console.log(`✅ Onboarding completed successfully for user ${ctx.userId} with Stripe customer ${stripeCustomerId}`);
+			console.log(
+				`✅ Onboarding completed successfully for user ${ctx.userId} with Stripe customer ${stripeCustomerId}`,
+			);
 
 			// ✅ COMPLETED:
 			// 1. Created/retrieved Stripe customer
 			// 2. Attached payment method to customer
 			// 3. Set payment method as default
 			// 4. Completed onboarding in database
-			// 
+			//
 			// TODO for future implementation:
 			// 1. Create Stripe subscription with productId and trial period
 			// 2. Send welcome email
@@ -496,8 +529,7 @@ export const subscriptionRouter = createTRPCRouter({
 					selectedPlan: input.selectedPlan,
 					isAnnual: input.isAnnual,
 					stripeCustomerId: stripeCustomerId,
-				}
+				},
 			};
 		}),
-
 });

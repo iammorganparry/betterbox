@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 /**
  * YOU PROBABLY DON'T NEED TO EDIT THIS FILE, UNLESS:
  * 1. You want to modify request context (see Part 1).
@@ -6,25 +7,25 @@
  * TL;DR - This is where all the tRPC server stuff is created and plugged in. The pieces you will
  * need to use are documented accordingly near the end.
  */
-import { initTRPC, TRPCError } from "@trpc/server";
+import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
-import { auth } from "@clerk/nextjs/server";
 
 import { db } from "~/db";
-import { UserService } from "~/services/db/user.service";
-import { UnipileAccountService } from "~/services/db/unipile-account.service";
-import { UnipileMessageService } from "~/services/db/unipile-message.service";
-import { UnipileContactService } from "~/services/db/unipile-contact.service";
-import { UnipileChatService } from "~/services/db/unipile-chat.service";
 import { ChatFolderService } from "~/services/db/chat-folder.service";
 import { OnboardingService } from "~/services/db/onboarding.service";
+import { UnipileAccountService } from "~/services/db/unipile-account.service";
+import { UnipileChatService } from "~/services/db/unipile-chat.service";
+import { UnipileContactService } from "~/services/db/unipile-contact.service";
+import { UnipileMessageService } from "~/services/db/unipile-message.service";
+import { UserService } from "~/services/db/user.service";
 
-import { RealtimeService } from "~/services/realtime.service";
-import { LinkedInAuthService } from "~/services/linkedin-auth.service";
-import { HistoricalSyncService } from "~/services/unipile/historical-sync";
 import { SubscriptionService } from "~/services/db/subscription.service";
+import { inngest } from "~/services/inngest";
+import { LinkedInAuthService } from "~/services/linkedin-auth.service";
+import { RealtimeService } from "~/services/realtime.service";
 import { StripeService } from "~/services/stripe.service";
+import { HistoricalSyncService } from "~/services/unipile/historical-sync";
 
 /**
  * 1. CONTEXT
@@ -54,7 +55,7 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
 
 		realtimeService: new RealtimeService(),
 		linkedinAuthService: new LinkedInAuthService(),
-		historicalSyncService: new HistoricalSyncService(db),
+		historicalSyncService: new HistoricalSyncService(inngest),
 		subscriptionService: new SubscriptionService(db),
 		stripeService: new StripeService(),
 	};

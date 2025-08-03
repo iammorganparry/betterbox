@@ -1,28 +1,28 @@
-import {
-	pgTable,
-	text,
-	timestamp,
-	boolean,
-	integer,
-	uuid,
-	bigint,
-	json,
-	index,
-	unique,
-	serial,
-} from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import {
-	unipileAccountTypeEnum,
-	unipileAccountStatusEnum,
-	unipileChatTypeEnum,
-	unipileContentTypeEnum,
-	unipileNetworkDistanceEnum,
-	unipileMessageTypeEnum,
-	unipileAttendeeTypeEnum,
-	unipileAttachmentTypeEnum,
+	bigint,
+	boolean,
+	index,
+	integer,
+	json,
+	pgTable,
+	serial,
+	text,
+	timestamp,
+	unique,
+	uuid,
+} from "drizzle-orm/pg-core";
+import {
 	subscriptionPlanEnum,
 	subscriptionStatusEnum,
+	unipileAccountStatusEnum,
+	unipileAccountTypeEnum,
+	unipileAttachmentTypeEnum,
+	unipileAttendeeTypeEnum,
+	unipileChatTypeEnum,
+	unipileContentTypeEnum,
+	unipileMessageTypeEnum,
+	unipileNetworkDistanceEnum,
 } from "./enums";
 
 // Post table (legacy)
@@ -50,7 +50,9 @@ export const users = pgTable("user", {
 	// Onboarding enforcement fields
 	onboarding_required: boolean("onboarding_required").default(true).notNull(),
 	onboarding_completed_at: timestamp("onboarding_completed_at"),
-	payment_method_added: boolean("payment_method_added").default(false).notNull(),
+	payment_method_added: boolean("payment_method_added")
+		.default(false)
+		.notNull(),
 	is_deleted: boolean("is_deleted").default(false).notNull(),
 	created_at: timestamp("created_at").defaultNow().notNull(),
 	updated_at: timestamp("updated_at").defaultNow().notNull(),

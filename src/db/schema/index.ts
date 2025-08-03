@@ -10,25 +10,25 @@ export * from "./relations";
 
 // Re-export for convenience
 import {
-	posts,
-	users,
-	profiles,
-	profileViews,
 	messages,
+	posts,
+	profileViews,
+	profiles,
 	unipileAccounts,
 	unipileChats,
 	unipileContacts,
+	users,
 } from "./tables";
 
 import {
-	unipileChatAttendees,
-	unipileMessages,
-	unipileMessageAttachments,
-	chatFolders,
 	chatFolderAssignments,
-	unipileProfileViews,
-	subscriptions,
+	chatFolders,
 	paymentMethods,
+	subscriptions,
+	unipileChatAttendees,
+	unipileMessageAttachments,
+	unipileMessages,
+	unipileProfileViews,
 } from "./tables2";
 
 export const schema = {

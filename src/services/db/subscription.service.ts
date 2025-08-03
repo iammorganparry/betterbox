@@ -1,6 +1,6 @@
-import { eq, and, desc, count, getTableColumns, gt, lt } from "drizzle-orm";
+import { and, count, desc, eq, getTableColumns, gt, lt } from "drizzle-orm";
 import type { db } from "~/db";
-import { subscriptions, paymentMethods, type users } from "~/db/schema";
+import { paymentMethods, subscriptions, type users } from "~/db/schema";
 
 // Use Drizzle's inferred types
 export type Subscription = typeof subscriptions.$inferSelect;

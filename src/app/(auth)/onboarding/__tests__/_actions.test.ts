@@ -1,70 +1,70 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Simple mock approach - test the integration rather than unit testing with complex mocks
-vi.mock('@clerk/nextjs/server', () => ({
-  auth: vi.fn().mockResolvedValue({ userId: null }),
-  clerkClient: vi.fn().mockReturnValue({
-    users: {
-      updateUser: vi.fn(),
-      getUser: vi.fn(),
-    },
-  }),
-}))
+vi.mock("@clerk/nextjs/server", () => ({
+	auth: vi.fn().mockResolvedValue({ userId: null }),
+	clerkClient: vi.fn().mockReturnValue({
+		users: {
+			updateUser: vi.fn(),
+			getUser: vi.fn(),
+		},
+	}),
+}));
 
-describe('Onboarding Actions Integration', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
+describe("Onboarding Actions Integration", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
 
-  describe('updateOnboardingStep', () => {
-    it('should be defined and callable', async () => {
-      // This is a smoke test to ensure the functions are properly exported
-      const { updateOnboardingStep } = await import('../_actions')
-      
-      expect(updateOnboardingStep).toBeDefined()
-      expect(typeof updateOnboardingStep).toBe('function')
-    })
-  })
+	describe("updateOnboardingStep", () => {
+		it("should be defined and callable", async () => {
+			// This is a smoke test to ensure the functions are properly exported
+			const { updateOnboardingStep } = await import("../_actions");
 
-  describe('completeOnboarding', () => {
-    it('should be defined and callable', async () => {
-      // This is a smoke test to ensure the functions are properly exported  
-      const { completeOnboarding } = await import('../_actions')
-      
-      expect(completeOnboarding).toBeDefined()
-      expect(typeof completeOnboarding).toBe('function')
-    })
-  })
+			expect(updateOnboardingStep).toBeDefined();
+			expect(typeof updateOnboardingStep).toBe("function");
+		});
+	});
 
-  describe('Function signatures', () => {
-    it('should have correct parameter expectations', async () => {
-      const { updateOnboardingStep } = await import('../_actions')
-      
-      // Test that the function accepts the expected parameter shape without execution
-      expect(() => {
-        // We just check the function can be called with the right params
-        // The function will return a rejected promise due to mocked auth, but that's expected
-        updateOnboardingStep({
-          linkedinConnected: true,
-          stripeSubscribed: false,
-          cardDetailsAdded: false,
-          onboardingComplete: false,
-        }).catch(() => {
-          // Ignore the promise rejection - we're just testing the call signature
-        })
-      }).not.toThrow()
-    })
+	describe("completeOnboarding", () => {
+		it("should be defined and callable", async () => {
+			// This is a smoke test to ensure the functions are properly exported
+			const { completeOnboarding } = await import("../_actions");
 
-    it('should handle mocked auth response correctly', async () => {
-      const { updateOnboardingStep } = await import('../_actions')
-      
-      // Call the function and expect it to return an error due to no user
-      const result = await updateOnboardingStep({ linkedinConnected: true })
-      
-      expect(result).toEqual({ error: 'No logged in user' })
-    })
-  })
-})
+			expect(completeOnboarding).toBeDefined();
+			expect(typeof completeOnboarding).toBe("function");
+		});
+	});
+
+	describe("Function signatures", () => {
+		it("should have correct parameter expectations", async () => {
+			const { updateOnboardingStep } = await import("../_actions");
+
+			// Test that the function accepts the expected parameter shape without execution
+			expect(() => {
+				// We just check the function can be called with the right params
+				// The function will return a rejected promise due to mocked auth, but that's expected
+				updateOnboardingStep({
+					linkedinConnected: true,
+					stripeSubscribed: false,
+					cardDetailsAdded: false,
+					onboardingComplete: false,
+				}).catch(() => {
+					// Ignore the promise rejection - we're just testing the call signature
+				});
+			}).not.toThrow();
+		});
+
+		it("should handle mocked auth response correctly", async () => {
+			const { updateOnboardingStep } = await import("../_actions");
+
+			// Call the function and expect it to return an error due to no user
+			const result = await updateOnboardingStep({ linkedinConnected: true });
+
+			expect(result).toEqual({ error: "No logged in user" });
+		});
+	});
+});
 
 /*
   Note: For comprehensive server-side testing of Clerk integration,
@@ -77,4 +77,4 @@ describe('Onboarding Actions Integration', () => {
   The Clerk server functions have complex TypeScript types that make
   unit testing challenging. The functions are better tested through
   integration scenarios.
-*/ 
+*/

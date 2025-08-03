@@ -1,6 +1,6 @@
+import type { Inngest } from "inngest";
 import { env } from "~/env";
 import type { UnipileProvider } from "~/types/unipile-account";
-import type { Inngest } from "inngest";
 
 export interface TriggerHistoricalSyncData {
 	user_id: string;

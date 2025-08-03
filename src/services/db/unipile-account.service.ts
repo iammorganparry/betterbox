@@ -1,9 +1,9 @@
-import { eq, and, or, count, desc, sql, getTableColumns } from "drizzle-orm";
+import { and, count, desc, eq, getTableColumns, or, sql } from "drizzle-orm";
 import type { db } from "~/db";
 import {
-	users,
-	unipileAccounts,
 	type unipileAccountStatusEnum,
+	unipileAccounts,
+	users,
 } from "~/db/schema";
 
 // Use Drizzle's inferred types

@@ -1,21 +1,21 @@
 import {
-	eq,
 	and,
-	or,
+	asc,
 	count,
 	desc,
-	asc,
-	sql,
+	eq,
 	getTableColumns,
+	or,
+	sql,
 } from "drizzle-orm";
 import type { db } from "~/db";
 import {
-	unipileChats,
-	unipileChatAttendees,
-	type unipileMessages,
-	type unipileMessageAttachments,
 	unipileAccounts,
+	unipileChatAttendees,
+	unipileChats,
 	type unipileContacts,
+	type unipileMessageAttachments,
+	type unipileMessages,
 } from "~/db/schema";
 
 // Use Drizzle's inferred types

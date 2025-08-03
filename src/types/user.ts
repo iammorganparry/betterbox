@@ -1,4 +1,4 @@
-import { users, unipileAccounts } from '~/db/schema';
+import type { unipileAccounts, users } from "~/db/schema";
 
 export type User = typeof users.$inferSelect;
 

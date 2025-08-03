@@ -2,17 +2,17 @@ import { serve } from "inngest/next";
 import { inngest } from "~/services/inngest";
 import {
 	userCreated,
-	userUpdated,
 	userDeleted,
+	userUpdated,
 } from "~/services/inngest/clerk-sync";
 import {
-	unipileAccountStatusUpdate,
-	unipileNewMessage,
-	unipileProfileView,
-	unipileHistoricalMessageSync,
-	unipileBulkMessageSync,
 	unipileAccountConnected,
 	unipileAccountDisconnected,
+	unipileAccountStatusUpdate,
+	unipileBulkMessageSync,
+	unipileHistoricalMessageSync,
+	unipileNewMessage,
+	unipileProfileView,
 } from "~/services/inngest/unipile-sync";
 
 // Create an API that serves all sync functions

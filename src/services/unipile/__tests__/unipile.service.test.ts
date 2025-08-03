@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { UnipileService } from "../unipile.service";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	UnipileApiPatchChatRequest,
 	UnipileApiPatchChatResponse,
 } from "~/types/unipile-api";
+import { UnipileService } from "../unipile.service";
 
 // Mock the HTTP client
 vi.mock("~/lib/http", () => ({

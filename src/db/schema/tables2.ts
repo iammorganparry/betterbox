@@ -1,21 +1,21 @@
 import {
+	bigint,
+	boolean,
+	index,
+	integer,
+	json,
 	pgTable,
 	text,
 	timestamp,
-	boolean,
-	integer,
-	uuid,
-	bigint,
-	json,
-	index,
 	unique,
+	uuid,
 } from "drizzle-orm/pg-core";
 import {
-	unipileMessageTypeEnum,
-	unipileAttendeeTypeEnum,
-	unipileAttachmentTypeEnum,
 	subscriptionPlanEnum,
 	subscriptionStatusEnum,
+	unipileAttachmentTypeEnum,
+	unipileAttendeeTypeEnum,
+	unipileMessageTypeEnum,
 } from "./enums";
 import {
 	unipileAccounts,
