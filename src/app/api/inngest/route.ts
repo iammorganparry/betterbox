@@ -11,8 +11,12 @@ import {
 	unipileAccountStatusUpdate,
 	unipileBulkMessageSync,
 	unipileHistoricalMessageSync,
-	unipileNewMessage,
+	unipileMessageReceived,
 	unipileProfileView,
+	unipileMessageDeleted,
+	unipileMessageEdited,
+	unipileMessageReaction,
+	unipileMessageRead,
 } from "~/services/inngest/unipile-sync";
 
 // Create an API that serves all sync functions
@@ -27,11 +31,15 @@ export const { GET, POST, PUT } = serve({
 		userDeleted,
 		// Unipile sync functions
 		unipileAccountStatusUpdate,
-		unipileNewMessage,
+		unipileMessageReceived,
 		unipileProfileView,
 		unipileHistoricalMessageSync,
 		unipileBulkMessageSync,
 		unipileAccountConnected,
 		unipileAccountDisconnected,
+		unipileMessageDeleted,
+		unipileMessageEdited,
+		unipileMessageReaction,
+		unipileMessageRead,
 	],
 });

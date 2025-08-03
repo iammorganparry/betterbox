@@ -10,8 +10,8 @@ export interface UnipileAccountStatusEventData extends UnipileApiAccountStatus {
 	user_identifier: string;
 }
 
-// New message event schema
-export interface UnipileNewMessageEventData {
+// Message received event schema
+export interface UnipileMessageReceivedEventData {
 	account_id: string;
 	provider: string;
 	message: UnipileApiMessage;
@@ -19,6 +19,44 @@ export interface UnipileNewMessageEventData {
 	sender?: UnipileApiParticipant;
 	recipient?: UnipileApiParticipant;
 	timestamp?: string;
+}
+
+// Message read event schema
+export interface UnipileMessageReadEventData {
+	account_id: string;
+	provider: string;
+	message_id: string;
+	read_by?: string;
+	read_at?: string;
+}
+
+// Message reaction event schema
+export interface UnipileMessageReactionEventData {
+	account_id: string;
+	provider: string;
+	message_id: string;
+	reaction: string;
+	reactor_id: string;
+	reaction_at?: string;
+}
+
+// Message edited event schema
+export interface UnipileMessageEditedEventData {
+	account_id: string;
+	provider: string;
+	message_id: string;
+	new_content: string;
+	edited_at?: string;
+	edited_by?: string;
+}
+
+// Message deleted event schema
+export interface UnipileMessageDeletedEventData {
+	account_id: string;
+	provider: string;
+	message_id: string;
+	deleted_at?: string;
+	deleted_by?: string;
 }
 
 // Profile view event schema
@@ -70,8 +108,20 @@ export type UnipileSchemas = {
 	"unipile/account.status": {
 		data: UnipileAccountStatusEventData;
 	};
-	"unipile/message.new": {
-		data: UnipileNewMessageEventData;
+	"unipile/message_received": {
+		data: UnipileMessageReceivedEventData;
+	};
+	"unipile/message_read": {
+		data: UnipileMessageReadEventData;
+	};
+	"unipile/message_reaction": {
+		data: UnipileMessageReactionEventData;
+	};
+	"unipile/message_edited": {
+		data: UnipileMessageEditedEventData;
+	};
+	"unipile/message_deleted": {
+		data: UnipileMessageDeletedEventData;
 	};
 	"unipile/profile.view": {
 		data: UnipileProfileViewEventData;
