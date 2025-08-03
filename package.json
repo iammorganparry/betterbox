@@ -7,7 +7,7 @@
 		"build": "dotenv -e .env -- next build",
 		"check": "biome check .",
 		"check:unsafe": "biome check --write --unsafe .",
-		"check:write": "biome check --write --fix .",
+		"check:write": "biome check --write .",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:push": "drizzle-kit push",
