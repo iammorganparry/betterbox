@@ -109,6 +109,10 @@ export const unipileAccounts = pgTable(
 		provider: unipileProviderEnum("provider").notNull(), // "linkedin", "whatsapp", etc.
 		account_id: text("account_id").notNull(), // Unipile account ID
 		status: unipileAccountStatusEnum("status").default("connected").notNull(),
+		// LinkedIn profile information for the logged-in user
+		linkedin_profile_name: text("linkedin_profile_name"),
+		linkedin_profile_picture_url: text("linkedin_profile_picture_url"),
+		linkedin_profile_synced_at: timestamp("linkedin_profile_synced_at"),
 		is_deleted: boolean("is_deleted").default(false).notNull(),
 		created_at: timestamp("created_at").defaultNow().notNull(),
 		updated_at: timestamp("updated_at").defaultNow().notNull(),

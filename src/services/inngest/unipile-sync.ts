@@ -19,6 +19,7 @@ import type {
 } from "~/db/schema/enums";
 import { env } from "~/env";
 import type { UnipileContactService } from "../db/unipile-contact.service";
+import { UserLinkedInProfileService } from "../db/user-linkedin-profile.service";
 
 // Helper functions for type mapping using database enums
 const VALID_PROVIDERS = [
@@ -140,6 +141,8 @@ async function createContactFromAttendee(
 	unipileContactService: UnipileContactService,
 	unipileAccountId: string,
 	attendeeData: UnipileApiChatAttendee,
+	unipileService: ReturnType<typeof createUnipileService>,
+	providerAccountId: string,
 ) {
 	console.log("📝 Creating contact from attendee (detailed):", {
 		provider_id: attendeeData.provider_id,
@@ -159,9 +162,30 @@ async function createContactFromAttendee(
 		},
 	});
 
-	// Skip if this is the account owner
+	// Handle the account owner - sync their LinkedIn profile
 	if (attendeeData.is_self === 1) {
-		console.log("⚠️ Skipping contact creation - is_self === 1");
+		console.log("👤 Syncing LinkedIn profile for account owner");
+		
+		try {
+			const userLinkedInProfileService = new UserLinkedInProfileService();
+			const currentProfile = await userLinkedInProfileService.getUserLinkedInProfile(unipileAccountId);
+			
+			// Check if profile needs sync (hasn't been synced in 24 hours or never synced)
+			if (userLinkedInProfileService.needsProfileSync(currentProfile?.linkedin_profile_synced_at || null)) {
+				console.log("🔄 Fetching LinkedIn profile for account owner");
+				
+				const ownProfile = await unipileService.getOwnProfile(providerAccountId);
+				await userLinkedInProfileService.updateUserLinkedInProfile(unipileAccountId, ownProfile);
+				
+				console.log("✅ LinkedIn profile synced successfully");
+			} else {
+				console.log("⏳ LinkedIn profile sync skipped - recently synced");
+			}
+		} catch (error) {
+			console.error("❌ Failed to sync LinkedIn profile for account owner:", error);
+		}
+		
+		// Skip contact creation for account owner
 		return null;
 	}
 
@@ -1108,16 +1132,16 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 										});
 
 									for (const attendeeData of attendeesResponse.items || []) {
-										// First create/upsert the contact (if not self)
+										// Handle all attendees - create contact if not self, sync profile if self
 										let contactId: string | null = null;
-										if (attendeeData.is_self !== 1) {
-											const contact = await createContactFromAttendee(
-												unipileContactService,
-												unipileAccount.id,
-												attendeeData,
-											);
-											contactId = contact?.id || null;
-										}
+										const contact = await createContactFromAttendee(
+											unipileContactService,
+											unipileAccount.id,
+											attendeeData,
+											unipileService,
+											account_id,
+										);
+										contactId = contact?.id || null;
 
 										// Then create the attendee with a reference to the contact
 										await unipileChatService.upsertAttendee(

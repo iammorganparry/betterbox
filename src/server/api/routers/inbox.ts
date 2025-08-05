@@ -865,4 +865,34 @@ export const inboxRouter = createTRPCRouter({
 				});
 			}
 		}),
+
+	/**
+	 * Get user's LinkedIn profile information for message display
+	 */
+	getUserLinkedInProfile: protectedProcedure
+		.input(
+			z.object({
+				unipileAccountId: z.string(),
+			}),
+		)
+		.query(async ({ input }) => {
+			try {
+				const { UserLinkedInProfileService } = await import(
+					"~/services/db/user-linkedin-profile.service"
+				);
+				const userLinkedInProfileService = new UserLinkedInProfileService();
+				
+				const profile = await userLinkedInProfileService.getUserLinkedInProfile(
+					input.unipileAccountId,
+				);
+
+				return profile;
+			} catch (error) {
+				console.error("❌ Error in getUserLinkedInProfile:", error);
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to fetch user LinkedIn profile",
+				});
+			}
+		}),
 });

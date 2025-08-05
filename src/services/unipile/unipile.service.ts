@@ -372,6 +372,18 @@ export class UnipileService {
 	}
 
 	/**
+	 * Retrieve the current logged-in user's own LinkedIn profile
+	 */
+	async getOwnProfile(accountId: string): Promise<UnipileApiUserProfile> {
+		const params = new URLSearchParams({ account_id: accountId });
+
+		const response = await this.client.get<UnipileApiUserProfile>(
+			`/users/me?${params.toString()}`,
+		);
+		return response.data;
+	}
+
+	/**
 	 * Retrieve a LinkedIn company profile
 	 */
 	async getCompanyProfile(
