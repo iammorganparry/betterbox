@@ -881,7 +881,7 @@ export const inboxRouter = createTRPCRouter({
 					"~/services/db/user-linkedin-profile.service"
 				);
 				const userLinkedInProfileService = new UserLinkedInProfileService();
-				
+
 				const profile = await userLinkedInProfileService.getUserLinkedInProfile(
 					input.unipileAccountId,
 				);
@@ -895,4 +895,94 @@ export const inboxRouter = createTRPCRouter({
 				});
 			}
 		}),
+
+	/**
+	 * Get user's profile views with pagination (Gold subscription required)
+	 */
+	getProfileViews: protectedProcedure
+		.input(
+			z.object({
+				limit: z.number().min(1).max(100).default(50),
+				offset: z.number().min(0).default(0),
+			}),
+		)
+		.query(async ({ ctx, input }) => {
+			try {
+				const { subscriptionService } = ctx.services;
+
+				// Check if user has Gold access
+				const hasGoldAccess = await subscriptionService.hasGoldAccess(
+					ctx.userId,
+				);
+				if (!hasGoldAccess) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message: "Profile Views requires a Gold subscription or higher",
+					});
+				}
+
+				const { ProfileViewsService } = await import(
+					"~/services/db/profile-views.service"
+				);
+				const profileViewsService = new ProfileViewsService();
+
+				const result = await profileViewsService.getProfileViewsByUser(
+					ctx.userId,
+					{
+						limit: input.limit,
+						offset: input.offset,
+					},
+				);
+
+				return result;
+			} catch (error) {
+				console.error("❌ Error in getProfileViews:", error);
+				if (error instanceof TRPCError) {
+					throw error;
+				}
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: "Failed to fetch profile views",
+				});
+			}
+		}),
+
+	/**
+	 * Get profile views analytics for the authenticated user (Gold subscription required)
+	 */
+	getProfileViewsAnalytics: protectedProcedure.query(async ({ ctx }) => {
+		try {
+			const { subscriptionService } = ctx.services;
+
+			// Check if user has Gold access
+			const hasGoldAccess = await subscriptionService.hasGoldAccess(ctx.userId);
+			if (!hasGoldAccess) {
+				throw new TRPCError({
+					code: "FORBIDDEN",
+					message:
+						"Profile Views analytics requires a Gold subscription or higher",
+				});
+			}
+
+			const { ProfileViewsService } = await import(
+				"~/services/db/profile-views.service"
+			);
+			const profileViewsService = new ProfileViewsService();
+
+			const analytics = await profileViewsService.getProfileViewsAnalytics(
+				ctx.userId,
+			);
+
+			return analytics;
+		} catch (error) {
+			console.error("❌ Error in getProfileViewsAnalytics:", error);
+			if (error instanceof TRPCError) {
+				throw error;
+			}
+			throw new TRPCError({
+				code: "INTERNAL_SERVER_ERROR",
+				message: "Failed to fetch profile views analytics",
+			});
+		}
+	}),
 });

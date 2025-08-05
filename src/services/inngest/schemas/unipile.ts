@@ -176,4 +176,9 @@ export type UnipileSchemas = {
 	"unipile/messages.bulk_sync": {
 		data: UnipileBulkMessageSyncEventData;
 	};
+	"unipile/profile_views.sync_scheduled": {
+		data: {
+			scheduledAt: string;
+		};
+	};
 };

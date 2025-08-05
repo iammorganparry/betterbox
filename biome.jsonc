@@ -25,6 +25,9 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
+			"suspicious": {
+				"noArrayIndexKey": "off"
+			},
 			"nursery": {
 				"useSortedClasses": {
 					"level": "warn",

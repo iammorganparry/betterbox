@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import type { UnipileApiUserProfile } from "~/types/unipile-api";
 import { db } from "~/db";
 import { unipileAccounts } from "~/db/schema/tables";
+import type { UnipileApiUserProfile } from "~/types/unipile-api";
 
 export class UserLinkedInProfileService {
 	/**

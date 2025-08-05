@@ -113,6 +113,18 @@ export function EnterpriseProtection({ children }: { children: ReactNode }) {
 	);
 }
 
+export function GoldProtection({ children }: { children: ReactNode }) {
+	return (
+		<BillingProtection
+			plan="gold"
+			fallbackTitle="Gold Plan Required"
+			fallbackDescription="Profile Views analytics requires a Gold subscription or higher."
+		>
+			{children}
+		</BillingProtection>
+	);
+}
+
 export function PremiumFeatureProtection({
 	children,
 }: { children: ReactNode }) {

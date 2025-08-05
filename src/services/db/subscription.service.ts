@@ -345,4 +345,65 @@ export class SubscriptionService {
 			stripeSubscriptionId,
 		});
 	}
+
+	/**
+	 * Check if user has access to Gold features (GOLD plan or higher)
+	 */
+	async hasGoldAccess(userId: string): Promise<boolean> {
+		const subscription = await this.getActiveSubscription(userId);
+
+		if (!subscription) {
+			return false;
+		}
+
+		// Define plan hierarchy (higher number = higher tier)
+		const planHierarchy: Record<SubscriptionPlan, number> = {
+			FREE: 0,
+			STARTER: 1,
+			PROFESSIONAL: 2,
+			ENTERPRISE: 3,
+			GOLD: 4,
+		};
+
+		const userPlanLevel = planHierarchy[subscription.plan];
+		const goldLevel = planHierarchy.GOLD;
+
+		return userPlanLevel >= goldLevel;
+	}
+
+	/**
+	 * Check if user has access to a specific plan level or higher
+	 */
+	async hasAccessToPlan(
+		userId: string,
+		requiredPlan: SubscriptionPlan,
+	): Promise<boolean> {
+		const subscription = await this.getActiveSubscription(userId);
+
+		if (!subscription) {
+			return requiredPlan === "FREE";
+		}
+
+		// Define plan hierarchy (higher number = higher tier)
+		const planHierarchy: Record<SubscriptionPlan, number> = {
+			FREE: 0,
+			STARTER: 1,
+			PROFESSIONAL: 2,
+			ENTERPRISE: 3,
+			GOLD: 4,
+		};
+
+		const userPlanLevel = planHierarchy[subscription.plan];
+		const requiredLevel = planHierarchy[requiredPlan];
+
+		return userPlanLevel >= requiredLevel;
+	}
+
+	/**
+	 * Get user's current plan or FREE if no subscription
+	 */
+	async getUserPlan(userId: string): Promise<SubscriptionPlan> {
+		const subscription = await this.getActiveSubscription(userId);
+		return subscription?.plan || "FREE";
+	}
 }

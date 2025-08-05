@@ -6,6 +6,10 @@ import {
 	userUpdated,
 } from "~/services/inngest/clerk-sync";
 import {
+	scheduleProfileViewsSync,
+	syncProfileViewsForAllUsers,
+} from "~/services/inngest/profile-views-sync";
+import {
 	unipileAccountConnected,
 	unipileAccountDisconnected,
 	unipileAccountStatusUpdate,
@@ -41,5 +45,8 @@ export const { GET, POST, PUT } = serve({
 		unipileMessageEdited,
 		unipileMessageReaction,
 		unipileMessageRead,
+		// Profile views sync functions
+		scheduleProfileViewsSync,
+		syncProfileViewsForAllUsers,
 	],
 });

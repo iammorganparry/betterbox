@@ -1,7 +1,31 @@
 import { vi } from "vitest";
 
+// Types for TRPC mock structures
+interface MockMutationResult<TData = unknown, TVariables = unknown> {
+	mutate: ReturnType<typeof vi.fn>;
+	isPending: boolean;
+	isError: boolean;
+	isSuccess: boolean;
+	error: unknown;
+	data: TData | undefined;
+	status: "idle" | "pending" | "error" | "success";
+	variables: TVariables | undefined;
+	failureCount: number;
+	failureReason: unknown;
+	isIdle: boolean;
+	isLoading: boolean;
+	isPaused: boolean;
+	reset: ReturnType<typeof vi.fn>;
+	trpc: {
+		path: string;
+		meta: Record<string, unknown>;
+	};
+}
+
 // Create a mock mutation result that matches TRPC's structure
-export const createMockMutation = (overrides: Partial<any> = {}) => ({
+export const createMockMutation = <TData = unknown, TVariables = unknown>(
+	overrides: Partial<MockMutationResult<TData, TVariables>> = {}
+) => ({
 	mutate: vi.fn(),
 	isPending: false,
 	isError: false,
@@ -23,8 +47,29 @@ export const createMockMutation = (overrides: Partial<any> = {}) => ({
 	...overrides,
 });
 
+// Types for TRPC query mock
+interface MockQueryResult<TData = unknown> {
+	data: TData | undefined;
+	isLoading: boolean;
+	isError: boolean;
+	isSuccess: boolean;
+	error: unknown;
+	status: "pending" | "error" | "success";
+	isPending: boolean;
+	isFetching: boolean;
+	isRefetching: boolean;
+	isStale: boolean;
+	refetch: ReturnType<typeof vi.fn>;
+	trpc: {
+		path: string;
+		meta: Record<string, unknown>;
+	};
+}
+
 // Create a mock query result that matches TRPC's structure
-export const createMockQuery = (overrides: Partial<any> = {}) => ({
+export const createMockQuery = <TData = unknown>(
+	overrides: Partial<MockQueryResult<TData>> = {}
+) => ({
 	data: undefined,
 	isLoading: false,
 	isError: false,

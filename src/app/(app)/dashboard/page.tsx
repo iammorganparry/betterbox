@@ -25,6 +25,12 @@ export default function DashboardPage() {
 								User Settings
 							</Link>
 							<Link
+								href="/dashboard/profile-views"
+								className="rounded bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700"
+							>
+								Profile Views
+							</Link>
+							<Link
 								href="/dashboard/api-keys"
 								className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700"
 							>
@@ -43,6 +49,7 @@ export default function DashboardPage() {
 						<ul className="list-inside list-disc space-y-1 text-muted-foreground text-sm">
 							<li>Home → Dashboard</li>
 							<li>Home → Dashboard → User Settings</li>
+							<li>Home → Dashboard → Profile Views</li>
 							<li>Home → Dashboard → Api Keys</li>
 							<li>Home → Dashboard → Billing → Invoices</li>
 						</ul>

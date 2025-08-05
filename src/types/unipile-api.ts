@@ -398,6 +398,38 @@ export interface UnipileBulkMessageData {
 	messages: UnipileApiMessage[];
 }
 
+// Profile Viewer from Unipile API
+export interface UnipileApiProfileViewer {
+	id?: string;
+	name?: string;
+	headline?: string;
+	profile_picture_url?: string;
+	profile_url?: string;
+	viewed_at: string; // ISO date string
+	provider_id?: string;
+	viewer_id?: string;
+	viewer_name?: string;
+	viewer_headline?: string;
+	viewer_image_url?: string;
+	viewer_profile_id?: string;
+	timestamp?: string;
+}
+
+// Raw response structure for profile viewers API endpoint
+export interface UnipileApiProfileViewersResponse {
+	data?: UnipileApiProfileViewer[];
+	items?: UnipileApiProfileViewer[];
+	viewers?: UnipileApiProfileViewer[];
+}
+
+// Generic raw data response for unknown structures
+export interface UnipileApiRawDataResponse {
+	data?: unknown;
+	items?: unknown;
+	viewers?: unknown;
+	[key: string]: unknown;
+}
+
 // Chat attendee specific response - Updated to match actual API
 export interface UnipileApiChatAttendee {
 	object: "ChatAttendee";

@@ -91,13 +91,11 @@ export default function ChatPage() {
 	);
 
 	// Fetch user's LinkedIn profile for displaying outgoing messages
-	const {
-		data: userLinkedInProfile,
-		isLoading: profileLoading,
-	} = api.inbox.getUserLinkedInProfile.useQuery(
-		{ unipileAccountId: chatDetails?.unipileAccount?.id || "" },
-		{ enabled: !!chatDetails?.unipileAccount?.id },
-	);
+	const { data: userLinkedInProfile, isLoading: profileLoading } =
+		api.inbox.getUserLinkedInProfile.useQuery(
+			{ unipileAccountId: chatDetails?.unipileAccount?.id || "" },
+			{ enabled: !!chatDetails?.unipileAccount?.id },
+		);
 
 	const {
 		data: messages,
@@ -255,30 +253,40 @@ export default function ChatPage() {
 								>
 									<div className="flex max-w-[75%] items-end gap-3">
 										{/* User's LinkedIn profile avatar for outgoing messages */}
-										{message.is_outgoing && userLinkedInProfile?.linkedin_profile_picture_url && (
-											<div className="flex flex-col items-center">
-												<Avatar className="h-8 w-8">
-													<AvatarImage
-														src={userLinkedInProfile.linkedin_profile_picture_url}
-														alt={userLinkedInProfile.linkedin_profile_name || "You"}
-													/>
-													<AvatarFallback className="bg-primary/10 font-medium text-primary text-xs">
-														{userLinkedInProfile.linkedin_profile_name
-															?.split(" ")
-															.map((n) => n[0])
-															.join("")
-															.toUpperCase()
-															.slice(0, 2) || "ME"}
-													</AvatarFallback>
-												</Avatar>
-												{userLinkedInProfile.linkedin_profile_name && (
-													<span className="text-xs text-muted-foreground mt-1 max-w-16 truncate">
-														{userLinkedInProfile.linkedin_profile_name.split(" ")[0]}
-													</span>
-												)}
-											</div>
-										)}
-										
+										{message.is_outgoing &&
+											userLinkedInProfile?.linkedin_profile_picture_url && (
+												<div className="flex flex-col items-center">
+													<Avatar className="h-8 w-8">
+														<AvatarImage
+															src={
+																userLinkedInProfile.linkedin_profile_picture_url
+															}
+															alt={
+																userLinkedInProfile.linkedin_profile_name ||
+																"You"
+															}
+														/>
+														<AvatarFallback className="bg-primary/10 font-medium text-primary text-xs">
+															{userLinkedInProfile.linkedin_profile_name
+																?.split(" ")
+																.map((n) => n[0])
+																.join("")
+																.toUpperCase()
+																.slice(0, 2) || "ME"}
+														</AvatarFallback>
+													</Avatar>
+													{userLinkedInProfile.linkedin_profile_name && (
+														<span className="mt-1 max-w-16 truncate text-muted-foreground text-xs">
+															{
+																userLinkedInProfile.linkedin_profile_name.split(
+																	" ",
+																)[0]
+															}
+														</span>
+													)}
+												</div>
+											)}
+
 										<div
 											className={`relative rounded-2xl px-4 py-3 shadow-sm ${
 												message.is_outgoing

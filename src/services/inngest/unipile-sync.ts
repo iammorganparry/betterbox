@@ -165,26 +165,40 @@ async function createContactFromAttendee(
 	// Handle the account owner - sync their LinkedIn profile
 	if (attendeeData.is_self === 1) {
 		console.log("👤 Syncing LinkedIn profile for account owner");
-		
+
 		try {
 			const userLinkedInProfileService = new UserLinkedInProfileService();
-			const currentProfile = await userLinkedInProfileService.getUserLinkedInProfile(unipileAccountId);
-			
+			const currentProfile =
+				await userLinkedInProfileService.getUserLinkedInProfile(
+					unipileAccountId,
+				);
+
 			// Check if profile needs sync (hasn't been synced in 24 hours or never synced)
-			if (userLinkedInProfileService.needsProfileSync(currentProfile?.linkedin_profile_synced_at || null)) {
+			if (
+				userLinkedInProfileService.needsProfileSync(
+					currentProfile?.linkedin_profile_synced_at || null,
+				)
+			) {
 				console.log("🔄 Fetching LinkedIn profile for account owner");
-				
-				const ownProfile = await unipileService.getOwnProfile(providerAccountId);
-				await userLinkedInProfileService.updateUserLinkedInProfile(unipileAccountId, ownProfile);
-				
+
+				const ownProfile =
+					await unipileService.getOwnProfile(providerAccountId);
+				await userLinkedInProfileService.updateUserLinkedInProfile(
+					unipileAccountId,
+					ownProfile,
+				);
+
 				console.log("✅ LinkedIn profile synced successfully");
 			} else {
 				console.log("⏳ LinkedIn profile sync skipped - recently synced");
 			}
 		} catch (error) {
-			console.error("❌ Failed to sync LinkedIn profile for account owner:", error);
+			console.error(
+				"❌ Failed to sync LinkedIn profile for account owner:",
+				error,
+			);
 		}
-		
+
 		// Skip contact creation for account owner
 		return null;
 	}
