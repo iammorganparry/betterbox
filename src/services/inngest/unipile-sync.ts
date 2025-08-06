@@ -6,11 +6,46 @@ import type { AccountStatusEvent } from "~/types/realtime";
 import { getUserChannelId } from "~/types/realtime";
 import type {
 	UnipileApiAccountStatus,
+	UnipileApiAttachment,
 	UnipileApiChatAttendee,
 	UnipileApiMessage,
 	UnipileApiUserProfile,
 	UnipileHistoricalSyncRequest,
 } from "~/types/unipile-api";
+
+// Webhook-specific attachment type (different from API response)
+interface WebhookAttachment {
+	id?: string;
+	type?: string;
+	url?: string;
+	filename?: string;
+	name?: string;
+	file_size?: number;
+	size?: number;
+	mime_type?: string;
+	unavailable?: boolean;
+}
+
+// Combined attachment data type for processing
+interface ProcessedAttachmentData {
+	id?: string;
+	type?: "img" | "video" | "audio" | "file" | "linkedin_post" | "video_meeting";
+	url?: string;
+	filename?: string;
+	file_size?: number;
+	mime_type?: string;
+	unavailable?: boolean;
+	width?: number;
+	height?: number;
+	duration?: number;
+	sticker?: boolean;
+	gif?: boolean;
+	voice_note?: boolean;
+	starts_at?: number;
+	expires_at?: number;
+	url_expires_at?: number;
+	time_range?: number;
+}
 
 import { unipileProfileViews } from "~/db/schema";
 import type {
@@ -481,6 +516,19 @@ export const unipileMessageReceived = inngest.createFunction(
 		// Real-time events don't include is_sender field, so we compare sender with account user
 		const isOutgoing = sender?.attendee_provider_id === account_info?.user_id;
 
+		console.log("🔍 Real-time message processing:", {
+			messageId: message_id,
+			senderProviderId: sender?.attendee_provider_id,
+			accountUserId: account_info?.user_id,
+			isOutgoing,
+			messageContent:
+				messageContent?.substring(0, 50) +
+				(messageContent && messageContent.length > 50 ? "..." : ""),
+			hasAttachments: !!(attachments && attachments.length > 0),
+			attachmentCount: attachments?.length || 0,
+			attachmentTypes: attachments?.map((att) => att.type) || [],
+		});
+
 		// Step 1: Upsert the chat (create if doesn't exist)
 		const internalChat = await step.run("upsert-chat", async () => {
 			// Try to find existing chat first
@@ -590,51 +638,155 @@ export const unipileMessageReceived = inngest.createFunction(
 
 		// Step 3: Upsert the message
 		const savedMessage = await step.run("upsert-message", async () => {
+			// Determine message type based on content and attachments
+			let inferredMessageType = message_type?.toLowerCase() || "text";
+			if (!messageContent && attachments && attachments.length > 0) {
+				// If no text content but has attachments, use the first attachment type as message type
+				const firstAttachment = attachments[0];
+				if (firstAttachment?.type === "img") {
+					inferredMessageType = "image";
+				} else if (firstAttachment?.type === "video") {
+					inferredMessageType = "video";
+				} else if (firstAttachment?.type === "audio") {
+					inferredMessageType = "audio";
+				} else {
+					inferredMessageType = "attachment";
+				}
+			}
+
 			return await messageService.upsertMessage(unipileAccount.id, message_id, {
 				chat_id: internalChat.id, // Link to internal chat record
 				external_chat_id: chat_id, // Store external API chat ID
 				sender_id: sender?.attendee_provider_id,
 				recipient_id: undefined, // Not provided in this event structure
-				message_type: message_type?.toLowerCase() || "text",
-				content: messageContent,
+				message_type: inferredMessageType,
+				content: messageContent || null, // Allow null content for attachment-only messages
 				is_read: false, // New messages are unread by default
 				is_outgoing: isOutgoing,
 				sent_at: timestamp ? new Date(timestamp) : new Date(),
 				is_event: is_event || 0,
 				subject: subject,
 				metadata: quoted
-					? { quoted, provider_message_id }
-					: { provider_message_id },
+					? {
+							quoted,
+							provider_message_id,
+							attachments_count: attachments?.length || 0,
+						}
+					: {
+							provider_message_id,
+							attachments_count: attachments?.length || 0,
+						},
 			});
 		});
 
 		// Step 4: Handle attachments if present
 		if (attachments && attachments.length > 0) {
 			await step.run("upsert-attachments", async () => {
-				for (const attachment of attachments) {
-					const attachmentIndex = attachments.indexOf(attachment);
-					await messageService.upsertAttachment(
-						savedMessage.id,
-						attachment.id || `${savedMessage.id}_${attachmentIndex}`,
-						{
+				console.log(
+					"📎 Processing",
+					attachments.length,
+					"attachments for message",
+					message_id,
+				);
+
+				for (const attachment of attachments as WebhookAttachment[]) {
+					try {
+						const attachmentIndex = attachments.indexOf(attachment);
+						const attachmentId =
+							attachment.id || `${savedMessage.id}_${attachmentIndex}`;
+
+						console.log("📎 Processing attachment:", {
+							attachmentId,
+							type: attachment.type,
+							filename: attachment.filename || attachment.name,
+							hasUrl: !!attachment.url,
+							fileSize: attachment.file_size || attachment.size,
+							mimeType: attachment.mime_type,
+							unavailable: attachment.unavailable,
+						});
+
+						// Process attachment data from webhook (contains all necessary metadata)
+						const attachmentData: ProcessedAttachmentData = {
+							id: attachment.id,
+							type: attachment.type as
+								| "img"
+								| "video"
+								| "audio"
+								| "file"
+								| "linkedin_post"
+								| "video_meeting"
+								| undefined,
 							url: attachment.url,
 							filename: attachment.filename || attachment.name,
 							file_size: attachment.file_size || attachment.size,
-							mime_type: attachment.mime_type || attachment.type,
-							unavailable: attachment.unavailable || false,
-						},
-						{
-							attachment_type:
-								(attachment.type as
-									| "file"
-									| "img"
-									| "video"
-									| "audio"
-									| "linkedin_post"
-									| "video_meeting") || "file",
-						},
-					);
+							mime_type: attachment.mime_type,
+							unavailable: attachment.unavailable,
+							// Note: Additional metadata like width/height may not be available in webhook
+							// These would typically come from the listChatMessages API during historical sync
+						};
+
+						console.log("📎 Using webhook attachment data:", {
+							url: !!attachmentData.url,
+							filename: attachmentData.filename,
+							fileSize: attachmentData.file_size,
+							mimeType: attachmentData.mime_type,
+							type: attachmentData.type,
+							unavailable: attachmentData.unavailable,
+						});
+
+						await messageService.upsertAttachment(
+							savedMessage.id,
+							attachmentId,
+							{
+								url: attachmentData.url,
+								filename: attachmentData.filename,
+								file_size: attachmentData.file_size,
+								mime_type: attachmentData.mime_type,
+								unavailable: attachmentData.unavailable || false,
+								width: attachmentData.width,
+								height: attachmentData.height,
+								duration: attachmentData.duration,
+								sticker: attachmentData.sticker || false,
+								gif: attachmentData.gif || false,
+								voice_note: attachmentData.voice_note || false,
+								starts_at: attachmentData.starts_at
+									? BigInt(attachmentData.starts_at)
+									: undefined,
+								expires_at: attachmentData.expires_at
+									? BigInt(attachmentData.expires_at)
+									: undefined,
+								url_expires_at: attachmentData.url_expires_at
+									? BigInt(attachmentData.url_expires_at)
+									: undefined,
+								time_range: attachmentData.time_range,
+							},
+							{
+								attachment_type:
+									(attachmentData.type as
+										| "file"
+										| "img"
+										| "video"
+										| "audio"
+										| "linkedin_post"
+										| "video_meeting") || "file",
+							},
+						);
+
+						console.log("✅ Successfully processed attachment", attachmentId);
+					} catch (error) {
+						console.error("❌ Failed to process attachment:", {
+							attachmentId: attachment.id,
+							error: error instanceof Error ? error.message : String(error),
+						});
+						// Continue processing other attachments even if one fails
+					}
 				}
+
+				console.log(
+					"✅ Completed processing",
+					attachments.length,
+					"attachments",
+				);
 			});
 		}
 

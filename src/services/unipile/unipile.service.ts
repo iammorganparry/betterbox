@@ -403,7 +403,7 @@ export class UnipileService {
 	 */
 
 	/**
-	 * Download an attachment
+	 * Download an attachment file content
 	 */
 	async downloadAttachment(
 		attachmentId: string,
