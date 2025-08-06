@@ -71,7 +71,7 @@ vi.mock("~/db", (req) => {
 	return {
 		__esModule: true,
 		...actual,
-		default: drizzleMock,
+		db: drizzleMock,
 	};
 });
 
