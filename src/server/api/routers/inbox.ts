@@ -87,11 +87,12 @@ export const inboxRouter = createTRPCRouter({
 							include_account: true,
 							include_attachments: true,
 							order_by: "sent_at",
-							order_direction: "asc",
+							order_direction: "desc", // Get newest first from DB
 						},
 					);
 
-				return messages;
+				// Reverse to show chronologically (oldest at top, newest at bottom)
+				return messages.reverse();
 			} catch (error) {
 				if (error instanceof TRPCError) {
 					throw error;
@@ -464,10 +465,10 @@ export const inboxRouter = createTRPCRouter({
 		)
 		.mutation(async ({ ctx, input }) => {
 			try {
+				const { services } = ctx;
+				const { unipileChatService, unipileMessageService } = services;
 				// First, get the chat details to find the external ID and account
-				const chat = await ctx.services.unipileChatService.getChatWithDetails(
-					input.chatId,
-				);
+				const chat = await unipileChatService.getChatWithDetails(input.chatId);
 
 				if (!chat) {
 					throw new TRPCError({
@@ -492,7 +493,6 @@ export const inboxRouter = createTRPCRouter({
 					});
 				}
 
-				// Create Unipile service instance
 				const unipileService = createUnipileService({
 					apiKey: env.UNIPILE_API_KEY,
 					dsn: env.UNIPILE_DSN,
@@ -517,47 +517,45 @@ export const inboxRouter = createTRPCRouter({
 					});
 				}
 
-				// Always create a local copy of the sent message for immediate display
-				// This ensures the user sees their message right away, regardless of Unipile response
-				const messageId =
-					sendMessageResponse.message?.id ||
-					`local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-				const savedMessage =
-					await ctx.services.unipileMessageService.upsertMessage(
+				// Only save locally if we have a definitive Unipile message ID
+				// This prevents duplicates when sync processes the same message later
+				let savedMessage = null;
+				if (sendMessageResponse.message?.id) {
+					savedMessage = await unipileMessageService.upsertMessage(
 						chat.unipileAccount.id,
-						messageId,
+						sendMessageResponse.message.id, // Use actual message ID to match sync process
 						{
 							chat_id: chat.id,
 							external_chat_id: chat.external_id,
 							sender_id:
-								sendMessageResponse.message?.sender_id ||
+								sendMessageResponse.message.sender_id ||
 								chat.unipileAccount.account_id,
 							message_type:
-								sendMessageResponse.message?.message_type?.toLowerCase() ||
+								sendMessageResponse.message.message_type?.toLowerCase() ||
 								"text",
 							content: input.content,
 							is_read: true,
 							is_outgoing: true, // This is an outgoing message
-							sent_at: sendMessageResponse.message?.timestamp
+							sent_at: sendMessageResponse.message.timestamp
 								? new Date(sendMessageResponse.message.timestamp)
 								: new Date(),
-							sender_urn: sendMessageResponse.message?.sender_urn,
-							attendee_type: sendMessageResponse.message?.attendee_type,
-							attendee_distance: sendMessageResponse.message?.attendee_distance,
-							seen: sendMessageResponse.message?.seen || 1,
-							hidden: sendMessageResponse.message?.hidden || 0,
-							deleted: sendMessageResponse.message?.deleted || 0,
-							edited: sendMessageResponse.message?.edited || 0,
-							is_event: sendMessageResponse.message?.is_event || 0,
-							delivered: sendMessageResponse.message?.delivered || 1,
-							behavior: sendMessageResponse.message?.behavior || 0,
-							event_type: sendMessageResponse.message?.event_type || 0,
-							replies: sendMessageResponse.message?.replies || 0,
-							subject: sendMessageResponse.message?.subject,
-							parent: sendMessageResponse.message?.parent,
+							sender_urn: sendMessageResponse.message.sender_urn,
+							attendee_type: sendMessageResponse.message.attendee_type,
+							attendee_distance: sendMessageResponse.message.attendee_distance,
+							seen: sendMessageResponse.message.seen || 1,
+							hidden: sendMessageResponse.message.hidden || 0,
+							deleted: sendMessageResponse.message.deleted || 0,
+							edited: sendMessageResponse.message.edited || 0,
+							is_event: sendMessageResponse.message.is_event || 0,
+							delivered: sendMessageResponse.message.delivered || 1,
+							behavior: sendMessageResponse.message.behavior || 0,
+							event_type: sendMessageResponse.message.event_type || 0,
+							replies: sendMessageResponse.message.replies || 0,
+							subject: sendMessageResponse.message.subject,
+							parent: sendMessageResponse.message.parent,
 						},
 					);
+				}
 
 				// Update chat's last_message_at timestamp
 				await ctx.services.unipileChatService.updateLastMessageAt(
@@ -572,6 +570,7 @@ export const inboxRouter = createTRPCRouter({
 					chatId: input.chatId,
 					unipileResponse: sendMessageResponse,
 					savedMessage,
+					localSave: savedMessage ? "immediate" : "will_sync_later",
 				};
 			} catch (error) {
 				if (error instanceof TRPCError) {

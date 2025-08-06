@@ -478,8 +478,7 @@ export const unipileMessageReceived = inngest.createFunction(
 			throw new Error(`Unipile account not found: ${account_id} (${provider})`);
 		}
 
-		// Determine if this is an outgoing message (sent by our user)
-		// Check if sender is the account owner by comparing with account user_id
+		// Real-time events don't include is_sender field, so we compare sender with account user
 		const isOutgoing = sender?.attendee_provider_id === account_info?.user_id;
 
 		// Step 1: Upsert the chat (create if doesn't exist)
@@ -524,7 +523,7 @@ export const unipileMessageReceived = inngest.createFunction(
 		// Step 2: Create/upsert contacts for all attendees (except self)
 		await step.run("upsert-attendees-and-contacts", async () => {
 			for (const attendee of attendees || []) {
-				// Skip if this is the account owner
+				// Skip if this is the account owner (same logic as message sender check)
 				if (attendee.attendee_provider_id === account_info?.user_id) {
 					continue;
 				}
@@ -1210,13 +1209,16 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 										}
 
 										for (const messageData of messagesResponse.items) {
-											const isOutgoing = messageData.is_sender === 1;
+											// Use is_sender field when available, fallback to sender ID matching
+											const isOutgoing =
+												messageData.is_sender === 1 ||
+												messageData.sender_id === account_id ||
+												messageData.sender_id === unipileAccount.account_id;
 
 											// Upsert message using the service
 											const message = await unipileMessageService.upsertMessage(
 												unipileAccount.id,
 												messageData.id,
-
 												{
 													chat_id: chat.id, // Link to internal chat record
 													external_chat_id: chatData.id, // Store external API chat ID
@@ -1226,7 +1228,10 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 														messageData.message_type?.toLowerCase() || "text",
 													content: messageData.text || undefined,
 													is_read: messageData.seen === 1,
-													is_outgoing: isOutgoing,
+													// Only update is_outgoing if we have reliable data (is_sender field)
+													...(messageData.is_sender !== undefined && {
+														is_outgoing: messageData.is_sender === 1,
+													}),
 													sent_at: messageData.timestamp
 														? new Date(messageData.timestamp)
 														: new Date(),
@@ -1518,7 +1523,11 @@ export const unipileBulkMessageSync = inngest.createFunction(
 					// Process messages and contacts in parallel batches
 					const messagePromises = batch.map(
 						async (messageData: UnipileApiMessage) => {
-							const isOutgoing = messageData.is_sender === 1;
+							// Use is_sender field when available, fallback to sender ID matching
+							const isOutgoing =
+								messageData.is_sender === 1 ||
+								messageData.sender_id === account_id ||
+								messageData.sender_id === unipileAccount.account_id;
 
 							// Find the internal chat record by external chat ID if available
 							let internalChat = null;
@@ -1551,7 +1560,10 @@ export const unipileBulkMessageSync = inngest.createFunction(
 										messageData.message_type?.toLowerCase() || "text",
 									content: messageData.text || undefined,
 									is_read: messageData.seen === 1,
-									is_outgoing: isOutgoing,
+									// Only update is_outgoing if we have reliable data (is_sender field)
+									...(messageData.is_sender !== undefined && {
+										is_outgoing: messageData.is_sender === 1,
+									}),
 									sent_at: messageData.timestamp
 										? new Date(messageData.timestamp)
 										: new Date(),

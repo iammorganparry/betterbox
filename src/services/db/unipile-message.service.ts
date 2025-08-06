@@ -117,13 +117,12 @@ export class UnipileMessageService {
 		const result = await this.drizzleDb
 			.insert(unipileMessages)
 			.values({
+				// Override with actual data
 				...data,
+				// Always set these required fields
 				updated_at: new Date(),
 				unipile_account_id: unipileAccountId,
 				external_id: externalId,
-				is_read: false,
-				is_outgoing: false,
-				message_type: "text",
 			})
 			.onConflictDoUpdate({
 				target: [
@@ -133,6 +132,8 @@ export class UnipileMessageService {
 				set: {
 					...data,
 					updated_at: new Date(),
+					// Preserve existing is_outgoing if not explicitly provided
+					is_outgoing: data.is_outgoing,
 				},
 			})
 			.returning();

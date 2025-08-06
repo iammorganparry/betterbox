@@ -1,18 +1,21 @@
 import { AppSidebar } from "~/components/app-sidebar";
 import { SidebarProvider } from "~/components/ui/sidebar";
+import { MessagesProvider } from "~/contexts/messages-context";
 
 export default function AppLayout({
-	children,
+  children,
 }: Readonly<{ children: React.ReactNode }>) {
-	return (
-		<SidebarProvider
-			style={
-				{
-					"--sidebar-width": "350px",
-				} as React.CSSProperties
-			}
-		>
-			<AppSidebar>{children}</AppSidebar>
-		</SidebarProvider>
-	);
+  return (
+    <MessagesProvider>
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "350px",
+          } as React.CSSProperties
+        }
+      >
+        <AppSidebar>{children}</AppSidebar>
+      </SidebarProvider>
+    </MessagesProvider>
+  );
 }
