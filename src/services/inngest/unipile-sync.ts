@@ -1139,9 +1139,9 @@ export const unipileProfileView = inngest.createFunction(
 	},
 );
 
+import type { GetFunctionInput } from "inngest";
 import type { unipileContentTypeEnum } from "~/db/schema";
 import type { UnipileAccountStatus } from "../db/unipile-account.service";
-import type { GetFunctionInput } from "inngest";
 /**
  * Enhanced comprehensive inbox sync from Unipile API
  * This function syncs complete LinkedIn inbox including:

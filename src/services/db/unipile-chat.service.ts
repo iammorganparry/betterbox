@@ -324,6 +324,7 @@ export class UnipileChatService {
 				},
 				unipileMessages: {
 					where: (table, { eq }) => eq(table.is_deleted, false),
+					orderBy: (table, { desc }) => desc(table.sent_at),
 					with: {
 						unipileMessageAttachments: true,
 					},
