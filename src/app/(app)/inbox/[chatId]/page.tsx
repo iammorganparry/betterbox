@@ -4,15 +4,21 @@ import { useRouter } from "@bprogress/next";
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
 import {
 	AlertCircle,
+	Calendar,
 	Check,
 	CheckCheck,
 	Download,
+	ExternalLink,
 	File,
 	Image,
 	MoreHorizontal,
+	Paperclip,
 	Play,
 	RefreshCw,
+	Send,
+	Smile,
 	Trash2,
+	UserPlus,
 	Volume2,
 } from "lucide-react";
 import { useParams } from "next/navigation";
@@ -21,6 +27,7 @@ import { toast } from "sonner";
 import { AppHeader } from "~/components/app-header";
 import { MessageInput } from "~/components/message-input";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
+import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
 	DropdownMenu,
@@ -28,8 +35,10 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { SidebarInset } from "~/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
 import { type Message, useMessages } from "~/contexts/messages-context";
 import { api } from "~/trpc/react";
 
@@ -50,12 +59,12 @@ interface ChatAttendee {
 interface MessageAttachment {
 	id: string;
 	attachment_type:
-		| "img"
-		| "video"
-		| "audio"
-		| "file"
-		| "linkedin_post"
-		| "video_meeting";
+	| "img"
+	| "video"
+	| "audio"
+	| "file"
+	| "linkedin_post"
+	| "video_meeting";
 	url?: string | null;
 	filename?: string | null;
 	file_size?: number | null;
@@ -108,8 +117,8 @@ function MessageAttachments({
 											maxHeight: "300px",
 											...(attachment.width &&
 												attachment.height && {
-													aspectRatio: `${attachment.width} / ${attachment.height}`,
-												}),
+												aspectRatio: `${attachment.width} / ${attachment.height}`,
+											}),
 										}}
 										onError={(e) => {
 											e.currentTarget.style.display = "none";
@@ -248,7 +257,19 @@ export default function ChatPage() {
 	const [deletingMessageId, setDeletingMessageId] = useState<string | null>(
 		null,
 	);
+	const [showReactions, setShowReactions] = useState<string | null>(null);
+	const [message, setMessage] = useState("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
+
+	// Reaction emojis for message reactions
+	const reactionEmojis = [
+		{ type: 'like', emoji: '👍' },
+		{ type: 'love', emoji: '❤️' },
+		{ type: 'laugh', emoji: '😂' },
+		{ type: 'surprise', emoji: '😮' },
+		{ type: 'sad', emoji: '😢' },
+		{ type: 'angry', emoji: '😠' }
+	];
 
 	// Use our custom messages state management
 	const {
@@ -362,6 +383,12 @@ export default function ChatPage() {
 		}
 	};
 
+	const handleReaction = (messageId: string, reactionType: string) => {
+		// TODO: Implement reaction functionality
+		console.log('Reaction:', reactionType, 'for message:', messageId);
+		// This would typically call an API to add/remove reactions
+	};
+
 	if (!chatId) {
 		return (
 			<>
@@ -466,14 +493,14 @@ export default function ChatPage() {
 				)}
 
 				{/* Messages Area */}
-				<ScrollArea className="h-0 flex-1">
-					<div className="bg-background/50 p-6">
+				<div className="flex-1 overflow-y-auto">
+					<div className="px-6 py-4 space-y-4">
 						{messagesLoading ? (
 							<div className="text-center text-muted-foreground">
 								Loading messages...
 							</div>
 						) : messages && messages.length > 0 ? (
-							<div className="space-y-4">
+							<>
 								{messages.map((message: Message) => {
 									// Get contact info by matching message sender_id to attendee external_id
 									let attendee = null;
@@ -495,164 +522,278 @@ export default function ChatPage() {
 									}
 
 									return (
-										<div
-											key={message.id}
-											className={`group flex items-end gap-3 ${
-												message.is_outgoing ? "flex-row-reverse" : "flex-row"
-											}`}
-										>
-											{/* Avatar for received messages */}
-											{!message.is_outgoing && (
-												<Avatar className="h-8 w-8 flex-shrink-0">
+										<div key={message.id} className="group">
+											<div className={`flex items-start gap-3 ${message.is_outgoing ? 'flex-row-reverse' : ''}`}>
+												<Avatar className="w-8 h-8 mt-1 flex-shrink-0">
 													<AvatarImage
 														src={contact?.profile_image_url || undefined}
 														alt={displayName}
 													/>
-													<AvatarFallback className="bg-muted text-xs">
-														{displayName
-															.split(" ")
-															.map((n) => n[0])
-															.join("")
-															.toUpperCase()
-															.slice(0, 2)}
+													<AvatarFallback className={`text-xs ${message.is_outgoing ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+														{message.is_outgoing ? 'You' : displayName.split(' ').map(n => n[0]).join('')}
 													</AvatarFallback>
 												</Avatar>
-											)}
 
-											{/* Message bubble */}
-											<div className="flex max-w-[70%] flex-col">
-												<div
-													className={`relative px-4 py-3 shadow-sm ${
-														message.is_outgoing
+												<div className={`flex-1 min-w-0 ${message.is_outgoing ? 'items-end' : ''}`}>
+													<div className={`flex items-baseline gap-2 mb-1 ${message.is_outgoing ? 'flex-row-reverse' : ''}`}>
+														<span className="text-foreground font-medium text-sm">{message.is_outgoing ? 'You' : displayName}</span>
+														<span className="text-xs text-muted-foreground">
+															{message.sent_at ? formatMessageTime(new Date(message.sent_at)) : ""}
+														</span>
+														{!message.is_read && !message.is_outgoing && (
+															<div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+														)}
+													</div>
+
+													<div className={`max-w-2xl ${message.is_outgoing ? 'ml-auto' : ''}`}>
+														<div className={`rounded-lg p-3 ${message.is_outgoing
 															? message.isFailed
-																? "rounded-2xl rounded-br-md bg-red-500 text-white"
+																? 'bg-red-500 text-white'
 																: message.isOptimistic
-																	? "rounded-2xl rounded-br-md bg-primary/70 text-primary-foreground"
-																	: "rounded-2xl rounded-br-md bg-primary text-primary-foreground"
-															: "rounded-2xl rounded-bl-md border border-border/50 bg-muted/80 text-foreground"
-													}`}
-												>
-													{message.content && (
-														<p className="text-sm leading-relaxed">
-															{message.content}
-														</p>
-													)}
+																	? 'bg-primary/70 text-primary-foreground'
+																	: 'bg-primary text-primary-foreground'
+															: 'bg-accent/50'
+															}`}>
+															{message.content && (
+																<p className="leading-relaxed">{message.content}</p>
+															)}
 
-													{/* Attachments */}
-													{(
-														message as Message & {
-															unipileMessageAttachments?: MessageAttachment[];
-														}
-													).unipileMessageAttachments && (
-														<MessageAttachments
-															attachments={
-																(
-																	message as Message & {
-																		unipileMessageAttachments: MessageAttachment[];
-																	}
-																).unipileMessageAttachments
-															}
-														/>
-													)}
+															{/* Attachments */}
+															{(
+																message as Message & {
+																	unipileMessageAttachments?: MessageAttachment[];
+																}
+															).unipileMessageAttachments && (
+																	<div className="mt-2">
+																		<MessageAttachments
+																			attachments={
+																				(
+																					message as Message & {
+																						unipileMessageAttachments: MessageAttachment[];
+																					}
+																				).unipileMessageAttachments
+																			}
+																		/>
+																	</div>
+																)}
 
-													{message.isFailed && (
-														<div className="mt-2 flex items-center gap-2 text-white/80 text-xs">
-															<AlertCircle className="h-3 w-3" />
-															<span>Failed to send</span>
-														</div>
-													)}
-												</div>
-
-												{/* Timestamp and status */}
-												<div
-													className={`mt-1 flex items-center gap-2 px-1 ${
-														message.is_outgoing
-															? "flex-row-reverse"
-															: "flex-row"
-													}`}
-												>
-													<span className="text-muted-foreground text-xs">
-														{message.sent_at
-															? formatMessageTime(new Date(message.sent_at))
-															: ""}
-													</span>
-													{/* Status indicator - only for outgoing messages */}
-													{message.is_outgoing && (
-														<div className="flex items-center">
-															{message.isFailed ? (
-																<AlertCircle className="h-3 w-3 text-red-500" />
-															) : message.isOptimistic ? (
-																<div className="h-3 w-3 animate-pulse rounded-full bg-muted-foreground/50" />
-															) : message.is_read ? (
-																<CheckCheck className="h-3 w-3 text-muted-foreground" />
-															) : (
-																<Check className="h-3 w-3 text-muted-foreground" />
+															{message.isFailed && (
+																<div className="mt-2 flex items-center gap-2 text-white/80 text-xs">
+																	<AlertCircle className="h-3 w-3" />
+																	<span>Failed to send</span>
+																</div>
 															)}
 														</div>
-													)}
-												</div>
-											</div>
 
-											{/* Delete button - only show for user's own messages */}
-											{message.is_outgoing && (
-												<div className="opacity-0 transition-opacity group-hover:opacity-100">
-													<DropdownMenu>
-														<DropdownMenuTrigger asChild>
+														{/* Status indicator - only for outgoing messages */}
+														{message.is_outgoing && (
+															<div className="flex items-center mt-1 gap-2">
+																{message.isFailed ? (
+																	<AlertCircle className="h-3 w-3 text-red-500" />
+																) : message.isOptimistic ? (
+																	<div className="h-3 w-3 animate-pulse rounded-full bg-muted-foreground/50" />
+																) : message.is_read ? (
+																	<CheckCheck className="h-3 w-3 text-muted-foreground" />
+																) : (
+																	<Check className="h-3 w-3 text-muted-foreground" />
+																)}
+															</div>
+														)}
+
+														{/* Reactions - placeholder for future implementation */}
+														{/* {msg.reactions && msg.reactions.length > 0 && (
+															<div className="flex items-center gap-1 mt-1">
+																{msg.reactions.map((reaction, idx) => (
+																	<Badge 
+																		key={idx}
+																		variant="secondary" 
+																		className="text-xs px-2 py-0 h-5 cursor-pointer hover:bg-secondary/80"
+																	>
+																		{reactionEmojis.find(r => r.type === reaction.type)?.emoji} {reaction.count}
+																	</Badge>
+																))}
+															</div>
+														)} */}
+													</div>
+												</div>
+
+												{/* Message Actions */}
+												<div className={`opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ${message.is_outgoing ? 'order-first' : ''}`}>
+													<div className="flex items-center gap-1">
+														{/* Reaction Button */}
+														<div className="relative">
 															<Button
 																variant="ghost"
 																size="sm"
-																className="h-8 w-8 p-0"
-																disabled={deletingMessageId === message.id}
-																data-testid="message-options-button"
+																className="h-6 w-6 p-0"
+																onClick={() => setShowReactions(showReactions === message.id ? null : message.id)}
 															>
-																<MoreHorizontal className="h-4 w-4" />
+																<Smile className="w-3 h-3" />
 															</Button>
-														</DropdownMenuTrigger>
-														<DropdownMenuContent align="end">
-															<DropdownMenuItem
-																onClick={() => handleDeleteMessage(message.id)}
-																className="text-red-600 focus:text-red-600"
-																disabled={deletingMessageId === message.id}
-															>
-																<Trash2 className="mr-2 h-4 w-4" />
-																{deletingMessageId === message.id
-																	? "Deleting..."
-																	: "Delete message"}
-															</DropdownMenuItem>
-														</DropdownMenuContent>
-													</DropdownMenu>
+
+															{showReactions === message.id && (
+																<div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-popover border border-border rounded-lg p-2 shadow-lg z-10">
+																	<div className="flex gap-1">
+																		{reactionEmojis.map((reaction) => (
+																			<Button
+																				key={reaction.type}
+																				variant="ghost"
+																				size="sm"
+																				className="h-8 w-8 p-0 text-base hover:bg-accent"
+																				onClick={() => {
+																					handleReaction(message.id, reaction.type);
+																					setShowReactions(null);
+																				}}
+																			>
+																				{reaction.emoji}
+																			</Button>
+																		))}
+																	</div>
+																</div>
+															)}
+														</div>
+
+														{message.is_outgoing && (
+															<DropdownMenu>
+																<DropdownMenuTrigger asChild>
+																	<Button
+																		variant="ghost"
+																		size="sm"
+																		className="h-6 w-6 p-0"
+																		disabled={deletingMessageId === message.id}
+																		data-testid="message-options-button"
+																	>
+																		<MoreHorizontal className="w-3 h-3" />
+																	</Button>
+																</DropdownMenuTrigger>
+																<DropdownMenuContent align="end">
+																	<DropdownMenuItem
+																		onClick={() => handleDeleteMessage(message.id)}
+																		className="text-red-600 focus:text-red-600"
+																		disabled={deletingMessageId === message.id}
+																	>
+																		<Trash2 className="mr-2 h-4 w-4" />
+																		{deletingMessageId === message.id
+																			? "Deleting..."
+																			: "Delete message"}
+																	</DropdownMenuItem>
+																</DropdownMenuContent>
+															</DropdownMenu>
+														)}
+													</div>
 												</div>
-											)}
+											</div>
 										</div>
 									);
 								})}
 								{/* Auto-scroll target */}
 								<div ref={messagesEndRef} />
-							</div>
+							</>
 						) : (
 							<div className="text-center text-muted-foreground">
 								No messages in this conversation
 							</div>
 						)}
 					</div>
-				</ScrollArea>
+				</div>
 
-				{/* Message Input Area */}
-				<div className="flex-shrink-0 border-t bg-background">
-					<MessageInput
-						chatId={chatId}
-						onMessageSent={() => {
-							void refetchMessages();
-							// Scroll to bottom after sending a message
-							setTimeout(scrollToBottom, 100);
-						}}
-						disabled={chatLoading || !chatDetails}
-						placeholder={
-							chatDetails?.read_only === 1
-								? "This conversation is read-only"
-								: "Type a message..."
-						}
-					/>
+				{/* Message Input */}
+				<div className="px-6 py-4 border-t border-border glass-effect">
+					<div className="space-y-3">
+						{/* Quick Actions */}
+						<div className="flex items-center gap-2">
+							<Button variant="outline" size="sm" className="h-8">
+								<Calendar className="w-3 h-3 mr-2" />
+								Schedule meeting
+							</Button>
+							<Button variant="outline" size="sm" className="h-8">
+								<UserPlus className="w-3 h-3 mr-2" />
+								Make introduction
+							</Button>
+							<Button variant="outline" size="sm" className="h-8">
+								<ExternalLink className="w-3 h-3 mr-2" />
+								Share profile
+							</Button>
+						</div>
+
+						{/* Message Composer */}
+						<div className="flex items-end gap-3 p-3 bg-accent/30 rounded-lg border border-border">
+							<Avatar className="w-8 h-8 flex-shrink-0">
+								<AvatarFallback className="bg-primary text-primary-foreground text-xs">
+									You
+								</AvatarFallback>
+							</Avatar>
+
+							<div className="flex-1 space-y-2">
+								<Input
+									placeholder={
+										chatDetails?.read_only === 1
+											? "This conversation is read-only"
+											: "Write a message..."
+									}
+									value={message}
+									onChange={(e) => setMessage(e.target.value)}
+									className="border-0 bg-transparent px-0 focus-visible:ring-0 text-foreground placeholder:text-muted-foreground"
+									disabled={chatLoading || !chatDetails || chatDetails?.read_only === 1}
+								/>
+
+								<div className="flex items-center justify-between">
+									<div className="flex items-center gap-2">
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground">
+													<Paperclip className="w-4 h-4" />
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent>
+												<p>Attach file</p>
+											</TooltipContent>
+										</Tooltip>
+
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground">
+													<Image className="w-4 h-4" />
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent>
+												<p>Add image</p>
+											</TooltipContent>
+										</Tooltip>
+
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground">
+													<Smile className="w-4 h-4" />
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent>
+												<p>Add emoji</p>
+											</TooltipContent>
+										</Tooltip>
+									</div>
+
+									<Button
+										size="sm"
+										className="h-8 px-3"
+										disabled={!message.trim() || chatLoading || !chatDetails || chatDetails?.read_only === 1}
+										onClick={async () => {
+											if (message.trim()) {
+												// TODO: Implement send message functionality
+												console.log('Sending message:', message);
+												setMessage("");
+												void refetchMessages();
+												setTimeout(scrollToBottom, 100);
+											}
+										}}
+									>
+										<Send className="w-3 h-3 mr-2" />
+										Send
+									</Button>
+								</div>
+							</div>
+						</div>
+					</div>
 				</div>
 			</div>
 		</>
