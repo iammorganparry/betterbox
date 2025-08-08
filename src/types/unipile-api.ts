@@ -494,12 +494,8 @@ export interface UnipileApiSendMessageRequest {
 }
 
 export interface UnipileApiSendMessageResponse {
-	id: string;
-	chat_id: string;
-	status: "sent" | "pending" | "failed";
-	timestamp: string;
-	message?: UnipileApiMessage;
-	error?: string;
+	object: "MessageSent";
+	message_id: string | null;
 }
 
 // Pagination cursor for efficient data retrieval

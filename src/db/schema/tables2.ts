@@ -115,6 +115,7 @@ export const unipileMessageAttachments = pgTable(
 		filename: text("filename"),
 		file_size: integer("file_size"),
 		mime_type: text("mime_type"),
+		content: text("content"), // Base64 encoded attachment content
 		unavailable: boolean("unavailable").default(false).notNull(),
 		url_expires_at: bigint("url_expires_at", { mode: "bigint" }),
 		width: integer("width"),

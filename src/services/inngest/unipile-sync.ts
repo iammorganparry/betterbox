@@ -684,6 +684,10 @@ export const _handleMessageReceived = async ({
 	// Step 4: Handle attachments if present
 	if (attachments && attachments.length > 0) {
 		await step.run("upsert-attachments", async () => {
+			const unipileService = createUnipileService({
+				apiKey: env.UNIPILE_API_KEY,
+				dsn: env.UNIPILE_DSN,
+			});
 			console.log(
 				"📎 Processing",
 				attachments.length,
@@ -776,6 +780,42 @@ export const _handleMessageReceived = async ({
 						});
 					}
 
+					// Download attachment content if attachment ID is available
+					let attachmentContent: string | null = null;
+					let finalMimeType = attachmentData.mime_type;
+
+					if (attachmentData.id && !attachmentData.unavailable) {
+						try {
+							console.log("📎 Downloading attachment content:", {
+								messageId: message_id,
+								attachmentId: attachmentData.id,
+							});
+
+							const downloadResult = await unipileService.getMessageAttachment(
+								message_id,
+								attachmentData.id,
+								account_id,
+							);
+
+							attachmentContent = downloadResult.content;
+							// Use mime type from download if available, fallback to metadata
+							finalMimeType =
+								downloadResult.mime_type || attachmentData.mime_type;
+
+							console.log("✅ Attachment content downloaded:", {
+								attachmentId: attachmentData.id,
+								contentSize: attachmentContent?.length || 0,
+								mimeType: finalMimeType,
+							});
+						} catch (error) {
+							console.warn("⚠️ Failed to download attachment content:", {
+								attachmentId: attachmentData.id,
+								error: error instanceof Error ? error.message : String(error),
+							});
+							// Continue without content - we'll still save the metadata
+						}
+					}
+
 					// Debug: Log what we're about to save to database
 					console.log("💾 Saving attachment to database:", {
 						messageId: savedMessage.id,
@@ -784,7 +824,10 @@ export const _handleMessageReceived = async ({
 							url: attachmentData.url,
 							filename: attachmentData.filename,
 							file_size: attachmentData.file_size,
-							mime_type: attachmentData.mime_type,
+							mime_type: finalMimeType,
+							content: attachmentContent
+								? `base64 content (length: ${attachmentContent.length})`
+								: null,
 							unavailable: attachmentData.unavailable || false,
 						},
 						metadata: {
@@ -799,7 +842,8 @@ export const _handleMessageReceived = async ({
 							url: attachmentData.url,
 							filename: attachmentData.filename,
 							file_size: attachmentData.file_size,
-							mime_type: attachmentData.mime_type,
+							mime_type: finalMimeType,
+							content: attachmentContent,
 							unavailable: attachmentData.unavailable || false,
 							width: attachmentData.width,
 							height: attachmentData.height,
@@ -1486,7 +1530,79 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 
 											// Sync message attachments if present
 											if (messageData.attachments?.length) {
+												console.log(
+													"📎 Processing",
+													messageData.attachments.length,
+													"attachments for historical message",
+													messageData.id,
+												);
+
 												for (const attachmentData of messageData.attachments) {
+													console.log("📎 Processing historical attachment:", {
+														attachmentId: attachmentData.id,
+														type: attachmentData.type,
+														filename:
+															attachmentData.file_name ||
+															attachmentData.filename,
+														hasUrl: !!attachmentData.url,
+														fileSize: attachmentData.file_size,
+														mimeType: attachmentData.mimetype,
+														unavailable: attachmentData.unavailable,
+													});
+
+													// Download attachment content if attachment ID is available
+													let attachmentContent: string | null = null;
+													let finalMimeType =
+														attachmentData.mimetype || attachmentData.mime_type;
+
+													if (
+														attachmentData.id &&
+														!attachmentData.unavailable
+													) {
+														try {
+															console.log(
+																"📎 Downloading historical attachment content:",
+																{
+																	messageId: messageData.id,
+																	attachmentId: attachmentData.id,
+																},
+															);
+
+															const downloadResult =
+																await unipileService.getMessageAttachment(
+																	messageData.id,
+																	attachmentData.id,
+																	account_id,
+																);
+
+															attachmentContent = downloadResult.content;
+															// Use mime type from download if available, fallback to metadata
+															finalMimeType =
+																downloadResult.mime_type || finalMimeType;
+
+															console.log(
+																"✅ Historical attachment content downloaded:",
+																{
+																	attachmentId: attachmentData.id,
+																	contentSize: attachmentContent?.length || 0,
+																	mimeType: finalMimeType,
+																},
+															);
+														} catch (error) {
+															console.warn(
+																"⚠️ Failed to download historical attachment content:",
+																{
+																	attachmentId: attachmentData.id,
+																	error:
+																		error instanceof Error
+																			? error.message
+																			: String(error),
+																},
+															);
+															// Continue without content - we'll still save the metadata
+														}
+													}
+
 													await unipileMessageService.upsertAttachment(
 														message.id,
 														attachmentData.id,
@@ -1496,9 +1612,8 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 																attachmentData.file_name ||
 																attachmentData.filename,
 															file_size: attachmentData.file_size,
-															mime_type:
-																attachmentData.mimetype ||
-																attachmentData.mime_type,
+															mime_type: finalMimeType,
+															content: attachmentContent,
 															unavailable: attachmentData.unavailable || false,
 															url_expires_at: attachmentData.url_expires_at
 																? BigInt(attachmentData.url_expires_at)
@@ -1520,6 +1635,11 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 														{
 															attachment_type: attachmentData.type,
 														},
+													);
+
+													console.log(
+														"✅ Successfully processed historical attachment",
+														attachmentData.id,
 													);
 												}
 											}

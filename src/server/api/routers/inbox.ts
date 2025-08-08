@@ -508,53 +508,87 @@ export const inboxRouter = createTRPCRouter({
 					chat.unipileAccount.account_id, // Use the account_id from the database
 				);
 
-				if (sendMessageResponse.status === "failed") {
+				if (sendMessageResponse.object !== "MessageSent") {
 					throw new TRPCError({
 						code: "BAD_GATEWAY",
-						message:
-							sendMessageResponse.error ||
-							"Failed to send message through Unipile",
+						message: "Failed to send message through Unipile",
 					});
 				}
 
 				// Only save locally if we have a definitive Unipile message ID
 				// This prevents duplicates when sync processes the same message later
 				let savedMessage = null;
-				if (sendMessageResponse.message?.id) {
+				if (sendMessageResponse.message_id) {
 					savedMessage = await unipileMessageService.upsertMessage(
 						chat.unipileAccount.id,
-						sendMessageResponse.message.id, // Use actual message ID to match sync process
+						sendMessageResponse.message_id, // Use actual message ID to match sync process
 						{
 							chat_id: chat.id,
 							external_chat_id: chat.external_id,
-							sender_id:
-								sendMessageResponse.message.sender_id ||
-								chat.unipileAccount.account_id,
-							message_type:
-								sendMessageResponse.message.message_type?.toLowerCase() ||
-								"text",
+							sender_id: chat.unipileAccount.account_id,
+							message_type: "text",
 							content: input.content,
 							is_read: true,
 							is_outgoing: true, // This is an outgoing message
-							sent_at: sendMessageResponse.message.timestamp
-								? new Date(sendMessageResponse.message.timestamp)
-								: new Date(),
-							sender_urn: sendMessageResponse.message.sender_urn,
-							attendee_type: sendMessageResponse.message.attendee_type,
-							attendee_distance: sendMessageResponse.message.attendee_distance,
-							seen: sendMessageResponse.message.seen || 1,
-							hidden: sendMessageResponse.message.hidden || 0,
-							deleted: sendMessageResponse.message.deleted || 0,
-							edited: sendMessageResponse.message.edited || 0,
-							is_event: sendMessageResponse.message.is_event || 0,
-							delivered: sendMessageResponse.message.delivered || 1,
-							behavior: sendMessageResponse.message.behavior || 0,
-							event_type: sendMessageResponse.message.event_type || 0,
-							replies: sendMessageResponse.message.replies || 0,
-							subject: sendMessageResponse.message.subject,
-							parent: sendMessageResponse.message.parent,
+							sent_at: new Date(),
+							sender_urn: null,
+							attendee_type: null,
+							attendee_distance: null,
+							seen: 1,
+							hidden: 0,
+							deleted: 0,
+							edited: 0,
+							is_event: 0,
+							delivered: 1,
+							behavior: 0,
+							event_type: 0,
+							replies: 0,
+							subject: null,
+							parent: null,
 						},
 					);
+
+					// Save attachments if any were included in the original request
+					if (input.attachments?.length && savedMessage) {
+						console.log(
+							`📎 Saving ${input.attachments.length} attachments for sent message`,
+						);
+
+						for (let i = 0; i < input.attachments.length; i++) {
+							const attachment = input.attachments[i];
+							if (!attachment) continue;
+
+							// Create a unique external ID for each attachment since we don't have one from Unipile
+							const attachmentExternalId = `sent-${savedMessage.id}-${i}`;
+
+							try {
+								await unipileMessageService.upsertAttachment(
+									savedMessage.id,
+									attachmentExternalId,
+									{
+										url: attachment.url,
+										filename: attachment.filename || `attachment-${i + 1}`,
+										mime_type: attachment.type,
+										content: attachment.data, // Base64 content from the frontend
+										unavailable: false,
+									},
+									{
+										attachment_type: attachment.type.startsWith("image/")
+											? "img"
+											: attachment.type.startsWith("video/")
+												? "video"
+												: attachment.type.startsWith("audio/")
+													? "audio"
+													: "file",
+									},
+								);
+								console.log(`✅ Saved attachment ${i + 1} for sent message`);
+							} catch (error) {
+								console.error(`❌ Failed to save attachment ${i + 1}:`, error);
+								// Don't throw - let the message send succeed even if attachment save fails
+							}
+						}
+					}
 				}
 
 				// Update chat's last_message_at timestamp
@@ -566,13 +600,14 @@ export const inboxRouter = createTRPCRouter({
 				return {
 					success: true,
 					message: "Message sent successfully",
-					messageId: sendMessageResponse.id,
+					messageId: sendMessageResponse.message_id,
 					chatId: input.chatId,
 					unipileResponse: sendMessageResponse,
 					savedMessage,
 					localSave: savedMessage ? "immediate" : "will_sync_later",
 				};
 			} catch (error) {
+				console.error("❌ Error in sendMessage:", error);
 				if (error instanceof TRPCError) {
 					throw error;
 				}

@@ -1,0 +1,1 @@
+ALTER TABLE "unipile_message_attachment" ADD COLUMN "content" text;

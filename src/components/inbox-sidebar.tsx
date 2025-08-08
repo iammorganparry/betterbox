@@ -2,28 +2,11 @@
 
 import { useRouter } from "@bprogress/next";
 import {
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import {
   ArchiveX,
   CheckCheck,
   Folder,
   FolderEdit,
   FolderPlus,
-  GripVertical,
   Inbox,
   Linkedin,
   MoreHorizontal,
@@ -127,8 +110,8 @@ const renderProviderIcon = (provider: string) => {
   }
 };
 
-// Extracted SortableChatItem component
-interface SortableChatItemProps {
+// Extracted ChatItem component
+interface ChatItemProps {
   mail: GroupedChat;
   selectedChatId: string | undefined;
   chatsData: ChatData[];
@@ -158,7 +141,7 @@ interface SortableChatItemProps {
   router: ReturnType<typeof useRouter>;
 }
 
-const SortableChatItem = ({
+const ChatItem = ({
   mail,
   selectedChatId,
   chatsData,
@@ -173,40 +156,18 @@ const SortableChatItem = ({
   deletingChatId,
   handleSoftDeleteChat,
   router,
-}: SortableChatItemProps) => {
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({
-      id: mail.email,
-      disabled: false,
-    });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
+}: ChatItemProps) => {
   const chatData = chatsData.find((chat) => chat.id === mail.email);
   const hasUnreadMessages = (chatData?.unread_count ?? 0) > 0;
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
       className={`group flex w-[450px] max-w-[450px] items-center border-border/50 border-b transition-all duration-200 last:border-b-0 ${
         selectedChatId === mail.email
           ? "border-l-4 border-l-primary bg-muted/80"
           : "hover:border-l-2 hover:border-l-muted-foreground/20 hover:bg-muted/30"
       }`}
     >
-      {/* Left Section: Drag Handle - Fixed width */}
-      <div
-        {...attributes}
-        {...listeners}
-        className="flex w-10 flex-shrink-0 cursor-grab items-center justify-center py-4 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
-      >
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
-      </div>
-
       {/* Middle Section: User and Message Preview - Flexible width */}
       <button
         type="button"
@@ -360,30 +321,21 @@ const SortableChatItem = ({
   );
 };
 
-// Extracted DroppableFolder component
-interface DroppableFolderProps {
+// Extracted Folder component
+interface FolderProps {
   folder: { id: string; name: string; chat_count: number };
   isSelected: boolean;
   onClick: () => void;
 }
 
-const DroppableFolder = ({
-  folder,
-  isSelected,
-  onClick,
-}: DroppableFolderProps) => {
-  const { setNodeRef, isOver } = useSortable({ id: folder.id });
-
+const FolderComponent = ({ folder, isSelected, onClick }: FolderProps) => {
   return (
     <button
-      ref={setNodeRef}
       onClick={onClick}
       type="button"
       className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 font-medium text-sm transition-all duration-200 ${
         isSelected
           ? "bg-primary text-primary-foreground shadow-sm"
-          : isOver
-          ? "scale-[1.02] bg-muted/80"
           : "hover:scale-[1.01] hover:bg-muted/60"
       }`}
     >
@@ -433,14 +385,6 @@ export default function InboxSidebar() {
 
   // Get TRPC utils for query invalidation
   const utils = api.useUtils();
-
-  // Drag and drop sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
   // Fetch chats from TRPC with infinite scroll support
   const {
@@ -675,22 +619,6 @@ export default function InboxSidebar() {
     }
   };
 
-  // Handle drag end for chat assignment to folders
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      const chatId = active.id as string;
-      const folderId = over.id as string;
-
-      // Assign chat to folder
-      assignChatToFolderMutation.mutate({
-        chatId,
-        folderId,
-      });
-    }
-  };
-
   // Handle folder creation
   const handleCreateFolder = () => {
     if (newFolderName.trim()) {
@@ -887,249 +815,230 @@ export default function InboxSidebar() {
   });
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="flex min-h-screen w-[450px] justify-center border-border border-r bg-background">
-        <div className="flex w-full max-w-md flex-col">
-          {/* Header */}
-          <div className="flex-shrink-0 border-b bg-card p-6 pb-4">
-            <div className="flex w-full items-center justify-between">
-              <div className="font-semibold text-foreground text-xl">
-                {activeItem?.title}
-              </div>
-              <div className="flex items-center gap-2">
-                <Label
-                  htmlFor="filter-select"
-                  className="text-muted-foreground text-sm"
-                >
-                  Filter:
-                </Label>
-                <Select
-                  value={filterMode}
-                  onValueChange={(value: FilterMode) => setFilterMode(value)}
-                >
-                  <SelectTrigger
-                    id="filter-select"
-                    className="h-8 w-24 border-input text-xs"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="unread">Unread</SelectItem>
-                    <SelectItem value="read">Read</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+    <div className="flex min-h-screen w-[450px] justify-center border-border border-r bg-background">
+      <div className="flex w-full max-w-md flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 border-b bg-card p-6 pb-4">
+          <div className="flex w-full items-center justify-between">
+            <div className="font-semibold text-foreground text-xl">
+              {activeItem?.title}
             </div>
-
-            <div className="relative mt-4">
-              <Input
-                placeholder="Type to search..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="border-muted-foreground/20 bg-muted/30 pr-8 focus:border-primary focus:ring-primary/20"
-              />
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm("")}
-                  className="-translate-y-1/2 absolute top-1/2 right-2 text-muted-foreground transition-colors hover:text-foreground"
-                  type="button"
-                  aria-label="Clear search"
+            <div className="flex items-center gap-2">
+              <Label
+                htmlFor="filter-select"
+                className="text-muted-foreground text-sm"
+              >
+                Filter:
+              </Label>
+              <Select
+                value={filterMode}
+                onValueChange={(value: FilterMode) => setFilterMode(value)}
+              >
+                <SelectTrigger
+                  id="filter-select"
+                  className="h-8 w-24 border-input text-xs"
                 >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="unread">Unread</SelectItem>
+                  <SelectItem value="read">Read</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+          </div>
 
-            {/* Search results indicator */}
-            {searchTerm.trim() && (
-              <div className="mt-2 text-muted-foreground text-xs">
-                {mails.length === 0
-                  ? "No results found"
-                  : mails.length === 1
-                  ? "1 conversation found"
-                  : `${mails.length} conversations found`}
-              </div>
+          <div className="relative mt-4">
+            <Input
+              placeholder="Type to search..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="border-muted-foreground/20 bg-muted/30 pr-8 focus:border-primary focus:ring-primary/20"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="-translate-y-1/2 absolute top-1/2 right-2 text-muted-foreground transition-colors hover:text-foreground"
+                type="button"
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
           </div>
 
-          {/* Folders Section */}
-          <div className="flex-shrink-0 border-border border-b bg-card/50 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-semibold text-foreground text-sm">Folders</h3>
+          {/* Search results indicator */}
+          {searchTerm.trim() && (
+            <div className="mt-2 text-muted-foreground text-xs">
+              {mails.length === 0
+                ? "No results found"
+                : mails.length === 1
+                ? "1 conversation found"
+                : `${mails.length} conversations found`}
+            </div>
+          )}
+        </div>
+
+        {/* Folders Section */}
+        <div className="flex-shrink-0 border-border border-b bg-card/50 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-semibold text-foreground text-sm">Folders</h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowCreateFolder(!showCreateFolder)}
+              className="h-6 w-6 p-0 hover:bg-muted"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div>
+            {/* All Chats folder */}
+            <FolderComponent
+              folder={{
+                id: "all",
+                name: "All Chats",
+                chat_count: typedChats.length,
+              }}
+              isSelected={selectedFolderId === "all"}
+              onClick={() => setSelectedFolderId("all")}
+            />
+
+            {/* User folders */}
+            {foldersData?.map((folder: FolderData) => (
+              <FolderComponent
+                key={folder.id}
+                folder={folder}
+                isSelected={selectedFolderId === folder.id}
+                onClick={() => setSelectedFolderId(folder.id)}
+              />
+            ))}
+          </div>
+
+          {/* Create folder input */}
+          {showCreateFolder && (
+            <div className="mt-3 flex gap-2 rounded-lg border border-border/50 bg-muted/30 p-3">
+              <Input
+                placeholder="Folder name"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleCreateFolder();
+                  } else if (e.key === "Escape") {
+                    setShowCreateFolder(false);
+                    setNewFolderName("");
+                  }
+                }}
+                className="border-border/50 bg-background text-sm focus:border-primary"
+                autoFocus
+              />
+              <Button
+                size="sm"
+                onClick={handleCreateFolder}
+                disabled={
+                  !newFolderName.trim() || createFolderMutation.isPending
+                }
+                className="bg-primary hover:bg-primary/90"
+              >
+                Add
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowCreateFolder(!showCreateFolder)}
-                className="h-6 w-6 p-0 hover:bg-muted"
+                onClick={() => setShowCreateFolder(false)}
+                className="hover:bg-muted"
               >
-                <Plus className="h-4 w-4" />
+                <X className="h-4 w-4" />
               </Button>
             </div>
+          )}
+        </div>
 
-            <SortableContext
-              items={[
-                "all",
-                ...(foldersData?.map((f: FolderData) => f.id) || []),
-              ]}
-              strategy={verticalListSortingStrategy}
-            >
-              {/* All Chats folder */}
-              <DroppableFolder
-                folder={{
-                  id: "all",
-                  name: "All Chats",
-                  chat_count: typedChats.length,
-                }}
-                isSelected={selectedFolderId === "all"}
-                onClick={() => setSelectedFolderId("all")}
-              />
+        {/* Chats Section */}
+        <ScrollArea className="h-0 flex-1">
+          <div ref={chatsContainerRef} className="p-0">
+            {chatsLoading || folderChatsLoading ? (
+              <div className="p-4 text-center text-muted-foreground text-sm">
+                Loading conversations...
+              </div>
+            ) : mails.length === 0 ? (
+              <div className="p-4 text-center text-muted-foreground text-sm">
+                {searchTerm.trim() ? (
+                  <>
+                    No conversations found for "{searchTerm.trim()}"
+                    <br />
+                    <span className="text-xs">
+                      Try different keywords or clear the search
+                    </span>
+                  </>
+                ) : filterMode === "unread" ? (
+                  "No unread conversations"
+                ) : filterMode === "read" ? (
+                  "No read conversations"
+                ) : (
+                  "No conversations found"
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {sortedProviders.map((provider) => (
+                  <div key={provider}>
+                    <div className="flex flex-row items-center gap-3 border-border/30 border-b bg-muted/20 px-4 py-3 font-bold text-muted-foreground text-xs uppercase tracking-wide">
+                      {renderProviderIcon(provider)}
+                      <span className="text-foreground/80">{provider}</span>
+                    </div>
+                    <div>
+                      {groupedChats[provider]?.map((mail) => (
+                        <ChatItem
+                          key={mail.email}
+                          mail={mail}
+                          selectedChatId={selectedChatId}
+                          chatsData={typedChats}
+                          handleChatClick={handleChatClick}
+                          markingAsReadId={markingAsReadId}
+                          handleMarkAsRead={handleMarkAsRead}
+                          foldersData={foldersData}
+                          assignChatToFolderMutation={
+                            assignChatToFolderMutation
+                          }
+                          selectedFolderId={selectedFolderId}
+                          removeChatFromFolderMutation={
+                            removeChatFromFolderMutation
+                          }
+                          handleRemoveFromFolder={handleRemoveFromFolder}
+                          deletingChatId={deletingChatId}
+                          handleSoftDeleteChat={handleSoftDeleteChat}
+                          router={router}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
 
-              {/* User folders */}
-              {foldersData?.map((folder: FolderData) => (
-                <DroppableFolder
-                  key={folder.id}
-                  folder={folder}
-                  isSelected={selectedFolderId === folder.id}
-                  onClick={() => setSelectedFolderId(folder.id)}
-                />
-              ))}
-            </SortableContext>
-
-            {/* Create folder input */}
-            {showCreateFolder && (
-              <div className="mt-3 flex gap-2 rounded-lg border border-border/50 bg-muted/30 p-3">
-                <Input
-                  placeholder="Folder name"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleCreateFolder();
-                    } else if (e.key === "Escape") {
-                      setShowCreateFolder(false);
-                      setNewFolderName("");
-                    }
-                  }}
-                  className="border-border/50 bg-background text-sm focus:border-primary"
-                  autoFocus
-                />
-                <Button
-                  size="sm"
-                  onClick={handleCreateFolder}
-                  disabled={
-                    !newFolderName.trim() || createFolderMutation.isPending
-                  }
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  Add
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowCreateFolder(false)}
-                  className="hover:bg-muted"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                {/* Load more trigger for infinite scroll */}
+                {hasNextPage && (
+                  <div className="border-border/30 border-t p-4">
+                    <Button
+                      onClick={() => fetchNextPage()}
+                      disabled={isFetchingNextPage}
+                      variant="outline"
+                      className="w-full border-border/50 bg-card hover:bg-muted/50"
+                    >
+                      {isFetchingNextPage
+                        ? "Loading..."
+                        : "Load more conversations"}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>
-
-          {/* Chats Section */}
-          <ScrollArea className="h-0 flex-1">
-            <div ref={chatsContainerRef} className="p-0">
-              {chatsLoading || folderChatsLoading ? (
-                <div className="p-4 text-center text-muted-foreground text-sm">
-                  Loading conversations...
-                </div>
-              ) : mails.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground text-sm">
-                  {searchTerm.trim() ? (
-                    <>
-                      No conversations found for "{searchTerm.trim()}"
-                      <br />
-                      <span className="text-xs">
-                        Try different keywords or clear the search
-                      </span>
-                    </>
-                  ) : filterMode === "unread" ? (
-                    "No unread conversations"
-                  ) : filterMode === "read" ? (
-                    "No read conversations"
-                  ) : (
-                    "No conversations found"
-                  )}
-                </div>
-              ) : (
-                <SortableContext
-                  items={mails.map((mail) => mail.email)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="space-y-4">
-                    {sortedProviders.map((provider) => (
-                      <div key={provider}>
-                        <div className="flex flex-row items-center gap-3 border-border/30 border-b bg-muted/20 px-4 py-3 font-bold text-muted-foreground text-xs uppercase tracking-wide">
-                          {renderProviderIcon(provider)}
-                          <span className="text-foreground/80">{provider}</span>
-                        </div>
-                        <div>
-                          {groupedChats[provider]?.map((mail) => (
-                            <SortableChatItem
-                              key={mail.email}
-                              mail={mail}
-                              selectedChatId={selectedChatId}
-                              chatsData={typedChats}
-                              handleChatClick={handleChatClick}
-                              markingAsReadId={markingAsReadId}
-                              handleMarkAsRead={handleMarkAsRead}
-                              foldersData={foldersData}
-                              assignChatToFolderMutation={
-                                assignChatToFolderMutation
-                              }
-                              selectedFolderId={selectedFolderId}
-                              removeChatFromFolderMutation={
-                                removeChatFromFolderMutation
-                              }
-                              handleRemoveFromFolder={handleRemoveFromFolder}
-                              deletingChatId={deletingChatId}
-                              handleSoftDeleteChat={handleSoftDeleteChat}
-                              router={router}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Load more trigger for infinite scroll */}
-                    {hasNextPage && (
-                      <div className="border-border/30 border-t p-4">
-                        <Button
-                          onClick={() => fetchNextPage()}
-                          disabled={isFetchingNextPage}
-                          variant="outline"
-                          className="w-full border-border/50 bg-card hover:bg-muted/50"
-                        >
-                          {isFetchingNextPage
-                            ? "Loading..."
-                            : "Load more conversations"}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </SortableContext>
-              )}
-            </div>
-          </ScrollArea>
-        </div>
+        </ScrollArea>
       </div>
-
-      {/* Confirmation Dialog */}
       <ConfirmationDialog />
-    </DndContext>
+    </div>
   );
 }

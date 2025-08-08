@@ -187,11 +187,73 @@ export class UnipileService {
 		request: UnipileApiSendMessageRequest,
 		accountId: string,
 	): Promise<UnipileApiSendMessageResponse> {
-		const params = new URLSearchParams({ account_id: accountId });
+		// Create FormData for multipart/form-data request
+		const formData = new FormData();
+
+		// Add account_id to form data (not query params)
+		formData.append("account_id", accountId);
+
+		// Add text message if provided
+		if (request.text) {
+			formData.append("text", request.text);
+		}
+
+		// Handle attachments as binary data
+		if (request.attachments?.length) {
+			for (let i = 0; i < request.attachments.length; i++) {
+				const attachment = request.attachments[i];
+				if (!attachment) continue;
+
+				// Convert base64 to binary blob for the API
+				if (attachment.data) {
+					try {
+						// Remove data URL prefix if present (data:mime/type;base64,)
+						const base64Data = attachment.data.includes(",")
+							? attachment.data.split(",")[1] || attachment.data
+							: attachment.data;
+
+						// Convert base64 to binary
+						const binaryString = atob(base64Data);
+						const bytes = new Uint8Array(binaryString.length);
+						for (let j = 0; j < binaryString.length; j++) {
+							bytes[j] = binaryString.charCodeAt(j);
+						}
+
+						// Create blob with proper MIME type
+						const blob = new Blob([bytes], {
+							type: attachment.type || "application/octet-stream",
+						});
+
+						// Add to form data as binary file
+						formData.append(
+							"attachments",
+							blob,
+							attachment.filename || `attachment-${i}`,
+						);
+					} catch (error) {
+						console.error(`Failed to process attachment ${i}:`, error);
+						// Skip this attachment but continue with others
+					}
+				}
+			}
+		}
+
+		// Debug logging
+		console.log("🔍 Sending message to Unipile API:", {
+			url: `/chats/${request.chat_id}/messages`,
+			accountId,
+			text: request.text,
+			attachmentCount: request.attachments?.length || 0,
+		});
 
 		const response = await this.client.post<UnipileApiSendMessageResponse>(
-			`/chats/${request.chat_id}/messages?${params.toString()}`,
-			request,
+			`/chats/${request.chat_id}/messages`,
+			formData,
+			{
+				headers: {
+					"Content-Type": "multipart/form-data",
+				},
+			},
 		);
 		return response.data;
 	}
@@ -403,7 +465,7 @@ export class UnipileService {
 	 */
 
 	/**
-	 * Download an attachment file content
+	 * Download an attachment file content as Blob
 	 */
 	async downloadAttachment(
 		attachmentId: string,
@@ -419,6 +481,69 @@ export class UnipileService {
 			},
 		);
 		return response.data;
+	}
+
+	/**
+	 * Retrieve an attachment from a message as base64 string
+	 * API Reference: GET https://{subdomain}.unipile.com:{port}/api/v1/messages/{message_id}/attachments/{attachment_id}
+	 */
+	async getMessageAttachment(
+		messageId: string,
+		attachmentId: string,
+		accountId?: string,
+	): Promise<{ content: string; mime_type?: string }> {
+		const params = new URLSearchParams();
+		if (accountId) params.set("account_id", accountId);
+
+		console.log("📎 Downloading attachment:", {
+			messageId,
+			attachmentId,
+			accountId,
+		});
+
+		try {
+			const response = await this.client.get<string>(
+				`/messages/${messageId}/attachments/${attachmentId}?${params.toString()}`,
+				{
+					responseType: "text",
+				},
+			);
+
+			console.log("✅ Attachment downloaded successfully:", {
+				messageId,
+				attachmentId,
+				contentLength: response.data?.length || 0,
+				isBase64:
+					response.data?.startsWith("data:") ||
+					response.data?.match(/^[A-Za-z0-9+/=]+$/),
+			});
+
+			// The response should be a base64 string
+			// Extract mime type if it's a data URL (data:mime/type;base64,content)
+			let content = response.data;
+			let mime_type: string | undefined;
+
+			if (content.startsWith("data:")) {
+				const matches = content.match(/^data:([^;]+);base64,(.+)$/);
+				if (matches) {
+					mime_type = matches[1];
+					content = matches[2] || "";
+				}
+			}
+
+			return {
+				content,
+				mime_type,
+			};
+		} catch (error) {
+			console.error("❌ Failed to download attachment:", {
+				messageId,
+				attachmentId,
+				accountId,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			throw error;
+		}
 	}
 
 	/**
