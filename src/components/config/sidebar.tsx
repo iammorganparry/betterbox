@@ -31,6 +31,7 @@ export const sidebarConfig = [
 		title: "Profile Views",
 		url: "/profile-views",
 		icon: EyeIcon,
+		disabled: true,
 		isActive: false,
 	},
 ];

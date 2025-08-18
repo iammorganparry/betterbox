@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { _handleMessageReceived } from "../unipile-sync";
+import { _handleMessageReceived } from "../unipile-sync/message-received";
 import type { UnipileMessageReceivedEventData } from "../schemas/unipile";
 
 // Mock the dependencies (env is already mocked in setup.ts)

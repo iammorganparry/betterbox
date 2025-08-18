@@ -21,7 +21,7 @@ import {
 	unipileMessageRead,
 	unipileMessageReceived,
 	unipileProfileView,
-} from "~/services/inngest/unipile-sync";
+} from "~/services/inngest/unipile-sync/index";
 
 // Create an API that serves all sync functions
 export const { GET, POST, PUT } = serve({

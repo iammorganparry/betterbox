@@ -47,8 +47,10 @@ export function AppSidebar({
 										<Command className="size-4" />
 									</div>
 									<div className="grid flex-1 text-left text-sm leading-tight">
-										<span className="truncate font-medium">Acme Inc</span>
-										<span className="truncate text-xs">Enterprise</span>
+										<span className="truncate font-medium">Betterbox</span>
+										<span className="truncate text-xs">
+											LinkedIn Inbox Sync
+										</span>
 									</div>
 								</a>
 							</SidebarMenuButton>
@@ -63,6 +65,7 @@ export function AppSidebar({
 									<Link href={item.url} key={item.title}>
 										<SidebarMenuItem key={item.title}>
 											<SidebarMenuButton
+												disabled={item.disabled}
 												tooltip={{
 													children: item.title,
 													hidden: false,
