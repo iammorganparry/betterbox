@@ -21,6 +21,7 @@ export const unipileAccountStatusEnum = pgEnum("unipile_account_status", [
 	"connected",
 	"disconnected",
 	"error",
+	"syncing",
 ]);
 
 export const unipileChatTypeEnum = pgEnum("unipile_chat_type", [

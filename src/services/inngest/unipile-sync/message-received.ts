@@ -1,14 +1,14 @@
-import { inngest } from "../../inngest";
 import type { GetFunctionInput } from "inngest";
+import { inngest } from "../../inngest";
 import {
-	normalizeProvider,
-	normalizeAccountType,
-	getCurrentSyncConfig,
-	createUnipileService,
-	createEnrichedContactFromSender,
-	env,
-	type WebhookAttachment,
 	type ProcessedAttachmentData,
+	type WebhookAttachment,
+	createEnrichedContactFromSender,
+	createUnipileService,
+	env,
+	getCurrentSyncConfig,
+	normalizeAccountType,
+	normalizeProvider,
 } from "./shared";
 
 export const _handleMessageReceived = async ({

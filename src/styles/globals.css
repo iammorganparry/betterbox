@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "../styles/_variables.scss";
+@import "../styles/_keyframe-animations.scss";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -221,5 +223,82 @@
 	/* Sidebar should have its own background but not override body */
 	[data-sidebar="sidebar"] {
 		background: var(--sidebar);
+	}
+
+	/* Tiptap Message Input Styles */
+	.tiptap-message-input {
+		outline: none !important;
+		border: none !important;
+		min-height: 20px;
+		max-height: 120px;
+		overflow-y: auto;
+		word-wrap: break-word;
+		white-space: pre-wrap;
+		width: 100%;
+		line-height: 1.5;
+	}
+
+	.tiptap-message-input:focus,
+	.tiptap-message-input:focus-visible {
+		outline: none !important;
+		border: none !important;
+		box-shadow: none !important;
+	}
+
+	.tiptap-message-input p {
+		margin: 0;
+		line-height: 1.5;
+	}
+
+	.tiptap-message-input .is-editor-empty:first-child::before {
+		color: hsl(var(--muted-foreground));
+		content: attr(data-placeholder);
+		float: left;
+		height: 0;
+		pointer-events: none;
+	}
+
+	.tiptap-message-input strong {
+		font-weight: bold;
+	}
+
+	.tiptap-message-input em {
+		font-style: italic;
+	}
+
+	.tiptap-message-input code {
+		background-color: hsl(var(--muted));
+		padding: 0.125rem 0.25rem;
+		border-radius: 0.25rem;
+		font-family: ui-monospace, SFMono-Regular, monospace;
+		font-size: 0.875em;
+	}
+
+	/* Remove all outlines and focus rings for Tiptap */
+	.ProseMirror,
+	.ProseMirror:focus,
+	.ProseMirror:focus-visible {
+		outline: none !important;
+		box-shadow: none !important;
+	}
+
+	/* Tiptap Image Styles */
+	.tiptap-message-input img {
+		max-width: 100%;
+		height: auto;
+		border-radius: 6px;
+		margin: 4px 0;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.tiptap-message-input img:hover {
+		opacity: 0.8;
+	}
+
+	/* Emoji rendering in Tiptap */
+	.tiptap-message-input .emoji {
+		font-size: 1.2em;
+		vertical-align: middle;
 	}
 }

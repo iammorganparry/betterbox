@@ -336,13 +336,15 @@ export class UnipileAccountService {
 		connectedAccounts: number;
 		disconnectedAccounts: number;
 		errorAccounts: number;
+		syncingAccounts: number;
 	}> {
 		const result = await this.drizzleDb.execute(sql`
 			SELECT 
 				COUNT(*)::int as total_accounts,
 				COUNT(*) FILTER (WHERE status = 'connected')::int as connected_accounts,
 				COUNT(*) FILTER (WHERE status = 'disconnected')::int as disconnected_accounts,
-				COUNT(*) FILTER (WHERE status = 'error')::int as error_accounts
+				COUNT(*) FILTER (WHERE status = 'error')::int as error_accounts,
+				COUNT(*) FILTER (WHERE status = 'syncing')::int as syncing_accounts
 			FROM ${unipileAccounts}
 			WHERE ${eq(unipileAccounts.user_id, userId)} AND ${eq(unipileAccounts.is_deleted, false)}
 		`);
@@ -353,6 +355,7 @@ export class UnipileAccountService {
 					connected_accounts: number;
 					disconnected_accounts: number;
 					error_accounts: number;
+					syncing_accounts: number;
 			  }
 			| undefined;
 
@@ -361,6 +364,207 @@ export class UnipileAccountService {
 			connectedAccounts: stats?.connected_accounts || 0,
 			disconnectedAccounts: stats?.disconnected_accounts || 0,
 			errorAccounts: stats?.error_accounts || 0,
+			syncingAccounts: stats?.syncing_accounts || 0,
 		};
+	}
+
+	/**
+	 * Start sync for an account
+	 */
+	async startSync(
+		accountId: string,
+		provider: string,
+	): Promise<UnipileAccount> {
+		const result = await this.drizzleDb
+			.update(unipileAccounts)
+			.set({
+				status: "syncing",
+				sync_status: "in_progress",
+				sync_started_at: new Date(),
+				sync_completed_at: null,
+				sync_error: null,
+				sync_progress: {
+					chats_processed: 0,
+					messages_processed: 0,
+					attendees_processed: 0,
+					started_at: new Date().toISOString(),
+				},
+				updated_at: new Date(),
+			})
+			.where(
+				and(
+					eq(unipileAccounts.account_id, accountId),
+					eq(unipileAccounts.provider, normalizeProvider(provider)),
+					eq(unipileAccounts.is_deleted, false),
+				),
+			)
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to start sync for account");
+		}
+		return result[0];
+	}
+
+	/**
+	 * Update sync progress
+	 */
+	async updateSyncProgress(
+		accountId: string,
+		provider: string,
+		progress: {
+			chats_processed?: number;
+			messages_processed?: number;
+			attendees_processed?: number;
+			total_chats?: number;
+			current_step?: string;
+		},
+	): Promise<UnipileAccount> {
+		// Get current progress to merge with new data
+		const currentAccount = await this.findUnipileAccountByProvider(
+			accountId,
+			provider,
+		);
+		const currentProgress = (currentAccount?.sync_progress as any) || {};
+
+		const updatedProgress = {
+			...currentProgress,
+			...progress,
+			last_updated: new Date().toISOString(),
+		};
+
+		const result = await this.drizzleDb
+			.update(unipileAccounts)
+			.set({
+				sync_progress: updatedProgress,
+				updated_at: new Date(),
+			})
+			.where(
+				and(
+					eq(unipileAccounts.account_id, accountId),
+					eq(unipileAccounts.provider, normalizeProvider(provider)),
+					eq(unipileAccounts.is_deleted, false),
+				),
+			)
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to update sync progress");
+		}
+		return result[0];
+	}
+
+	/**
+	 * Complete sync for an account
+	 */
+	async completeSync(
+		accountId: string,
+		provider: string,
+		finalStats: {
+			total_chats_processed: number;
+			total_messages_processed: number;
+			total_attendees_processed: number;
+		},
+	): Promise<UnipileAccount> {
+		const result = await this.drizzleDb
+			.update(unipileAccounts)
+			.set({
+				status: "connected",
+				sync_status: "completed",
+				sync_completed_at: new Date(),
+				last_sync_at: new Date(),
+				sync_progress: {
+					...finalStats,
+					completed_at: new Date().toISOString(),
+					status: "completed",
+				},
+				sync_error: null,
+				updated_at: new Date(),
+			})
+			.where(
+				and(
+					eq(unipileAccounts.account_id, accountId),
+					eq(unipileAccounts.provider, normalizeProvider(provider)),
+					eq(unipileAccounts.is_deleted, false),
+				),
+			)
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to complete sync for account");
+		}
+		return result[0];
+	}
+
+	/**
+	 * Fail sync for an account
+	 */
+	async failSync(
+		accountId: string,
+		provider: string,
+		error: string,
+	): Promise<UnipileAccount> {
+		const result = await this.drizzleDb
+			.update(unipileAccounts)
+			.set({
+				status: "error",
+				sync_status: "failed",
+				sync_error: error,
+				sync_progress: {
+					failed_at: new Date().toISOString(),
+					error: error,
+					status: "failed",
+				},
+				updated_at: new Date(),
+			})
+			.where(
+				and(
+					eq(unipileAccounts.account_id, accountId),
+					eq(unipileAccounts.provider, normalizeProvider(provider)),
+					eq(unipileAccounts.is_deleted, false),
+				),
+			)
+			.returning();
+
+		if (!result[0]) {
+			throw new Error("Failed to fail sync for account");
+		}
+		return result[0];
+	}
+
+	/**
+	 * Get sync status for user's accounts
+	 */
+	async getSyncStatus(userId: string): Promise<
+		Array<{
+			account_id: string;
+			provider: string;
+			status: string;
+			sync_status: string | null;
+			sync_progress: any;
+			sync_started_at: Date | null;
+			sync_completed_at: Date | null;
+			sync_error: string | null;
+		}>
+	> {
+		return await this.drizzleDb
+			.select({
+				account_id: unipileAccounts.account_id,
+				provider: unipileAccounts.provider,
+				status: unipileAccounts.status,
+				sync_status: unipileAccounts.sync_status,
+				sync_progress: unipileAccounts.sync_progress,
+				sync_started_at: unipileAccounts.sync_started_at,
+				sync_completed_at: unipileAccounts.sync_completed_at,
+				sync_error: unipileAccounts.sync_error,
+			})
+			.from(unipileAccounts)
+			.where(
+				and(
+					eq(unipileAccounts.user_id, userId),
+					eq(unipileAccounts.is_deleted, false),
+				),
+			)
+			.orderBy(desc(unipileAccounts.created_at));
 	}
 }

@@ -1,9 +1,9 @@
 import { inngest } from "../../inngest";
 import {
-	getCurrentSyncConfig,
-	createUnipileService,
-	createEnrichedContactFromSender,
 	type UnipileApiMessage,
+	createEnrichedContactFromSender,
+	createUnipileService,
+	getCurrentSyncConfig,
 } from "./shared";
 
 /**

@@ -1019,4 +1019,36 @@ export const inboxRouter = createTRPCRouter({
 			});
 		}
 	}),
+
+	/**
+	 * Get sync status for user's accounts
+	 */
+	getSyncStatus: protectedProcedure.query(async ({ ctx }) => {
+		try {
+			return await ctx.services.unipileAccountService.getSyncStatus(ctx.userId);
+		} catch (error) {
+			console.error("❌ Error in getSyncStatus:", error);
+			throw new TRPCError({
+				code: "INTERNAL_SERVER_ERROR",
+				message: "Failed to fetch sync status",
+			});
+		}
+	}),
+
+	/**
+	 * Get account statistics including sync status
+	 */
+	getAccountStats: protectedProcedure.query(async ({ ctx }) => {
+		try {
+			return await ctx.services.unipileAccountService.getAccountStats(
+				ctx.userId,
+			);
+		} catch (error) {
+			console.error("❌ Error in getAccountStats:", error);
+			throw new TRPCError({
+				code: "INTERNAL_SERVER_ERROR",
+				message: "Failed to fetch account statistics",
+			});
+		}
+	}),
 });

@@ -1,13 +1,13 @@
+import type { UnipileAccountStatus } from "../../db/unipile-account.service";
 import { inngest } from "../../inngest";
 import {
-	normalizeProvider,
-	normalizeAccountType,
-	getCurrentSyncConfig,
-	getUserChannelId,
 	type AccountStatusEvent,
 	type UnipileApiAccountStatus,
+	getCurrentSyncConfig,
+	getUserChannelId,
+	normalizeAccountType,
+	normalizeProvider,
 } from "./shared";
-import type { UnipileAccountStatus } from "../../db/unipile-account.service";
 
 /**
  * Handle Unipile account status updates (real-time)

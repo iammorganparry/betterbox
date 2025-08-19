@@ -1,5 +1,9 @@
-import { createUnipileService } from "../../unipile/unipile.service";
 import { getCurrentSyncConfig } from "~/config/sync.config";
+import type {
+	unipileAccountTypeEnum,
+	unipileProviderEnum,
+} from "~/db/schema/enums";
+import { env } from "~/env";
 import type { AccountStatusEvent } from "~/types/realtime";
 import { getUserChannelId } from "~/types/realtime";
 import type {
@@ -10,13 +14,9 @@ import type {
 	UnipileApiUserProfile,
 	UnipileHistoricalSyncRequest,
 } from "~/types/unipile-api";
-import type {
-	unipileAccountTypeEnum,
-	unipileProviderEnum,
-} from "~/db/schema/enums";
-import { env } from "~/env";
 import type { UnipileContactService } from "../../db/unipile-contact.service";
 import { UserLinkedInProfileService } from "../../db/user-linkedin-profile.service";
+import { createUnipileService } from "../../unipile/unipile.service";
 
 // Webhook-specific attachment type (different from API response)
 export interface WebhookAttachment {

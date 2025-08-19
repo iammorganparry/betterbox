@@ -1,10 +1,10 @@
-import { inngest } from "../../inngest";
 import { unipileProfileViews } from "~/db/schema";
+import { inngest } from "../../inngest";
 import {
-	normalizeProvider,
-	getCurrentSyncConfig,
-	createUnipileService,
 	createEnrichedContactFromSender,
+	createUnipileService,
+	getCurrentSyncConfig,
+	normalizeProvider,
 } from "./shared";
 
 /**

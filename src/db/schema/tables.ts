@@ -113,6 +113,13 @@ export const unipileAccounts = pgTable(
 		linkedin_profile_name: text("linkedin_profile_name"),
 		linkedin_profile_picture_url: text("linkedin_profile_picture_url"),
 		linkedin_profile_synced_at: timestamp("linkedin_profile_synced_at"),
+		// Sync tracking fields
+		sync_status: text("sync_status"), // 'not_started', 'in_progress', 'completed', 'failed'
+		sync_started_at: timestamp("sync_started_at"),
+		sync_completed_at: timestamp("sync_completed_at"),
+		sync_progress: json("sync_progress"), // Track chats/messages synced
+		sync_error: text("sync_error"),
+		last_sync_at: timestamp("last_sync_at"),
 		is_deleted: boolean("is_deleted").default(false).notNull(),
 		created_at: timestamp("created_at").defaultNow().notNull(),
 		updated_at: timestamp("updated_at").defaultNow().notNull(),

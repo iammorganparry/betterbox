@@ -1,14 +1,14 @@
-import { inngest } from "../../inngest";
 import type { unipileContentTypeEnum } from "~/db/schema";
-import {
-	normalizeProvider,
-	normalizeAccountType,
-	getCurrentSyncConfig,
-	createUnipileService,
-	createContactFromAttendee,
-	type UnipileHistoricalSyncRequest,
-} from "./shared";
 import type { UnipileAccountStatus } from "../../db/unipile-account.service";
+import { inngest } from "../../inngest";
+import {
+	type UnipileHistoricalSyncRequest,
+	createContactFromAttendee,
+	createUnipileService,
+	getCurrentSyncConfig,
+	normalizeAccountType,
+	normalizeProvider,
+} from "./shared";
 
 /**
  * Enhanced comprehensive inbox sync from Unipile API
@@ -45,507 +45,567 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 			limit = getCurrentSyncConfig().chat.maxChats, // Use config for chat limit
 		}: UnipileHistoricalSyncRequest = data;
 
-		// allow for 10 seconds to be added to the sync for unipile
-		await step.sleep("sleep-10-seconds", 10000);
+		try {
+			// allow for 10 seconds to be added to the sync for unipile
+			await step.sleep("sleep-10-seconds", 10000);
 
-		// Find the user and Unipile account
-		const user = await step.run("find-user", async () => {
-			return await userService.findByClerkId(user_id);
-		});
+			// Find the user and Unipile account
+			const user = await step.run("find-user", async () => {
+				return await userService.findByClerkId(user_id);
+			});
 
-		if (!user) {
-			throw new Error(`User not found: ${user_id}`);
-		}
+			if (!user) {
+				throw new Error(`User not found: ${user_id}`);
+			}
 
-		const unipileAccount = await step.run("find-unipile-account", async () => {
-			return await unipileAccountService.findUnipileAccount(
-				user.id,
-				account_id,
-				provider,
-			);
-		});
-
-		if (!unipileAccount) {
-			throw new Error(
-				`Unipile account not found for user ${user_id}: ${account_id} (${provider})`,
-			);
-		}
-
-		// Create Unipile service instance
-		const unipileService = createUnipileService({
-			apiKey: api_key,
-			dsn,
-		});
-
-		// Step 0: Test account connectivity first
-		const connectivityTest = await step.run(
-			"test-account-connectivity",
-			async () => {
-				return await unipileService.testAccountConnectivity(account_id);
-			},
-		);
-
-		if (!connectivityTest.connected) {
-			throw new Error(
-				`Account connectivity test failed for ${account_id}: ${connectivityTest.error}`,
-			);
-		}
-
-		console.log("✅ Account connectivity verified:", {
-			account_id,
-			provider,
-			accountStatus: connectivityTest.accountInfo?.status,
-		});
-
-		// Log sync configuration
-		const syncConfig = getCurrentSyncConfig();
-
-		let totalChatsProcessed = 0;
-		let totalMessagesProcessed = 0;
-		let totalAttendeesProcessed = 0;
-		let cursor: string | undefined;
-		const pageSize = syncConfig.chat.pageSize;
-
-		// Step 1: Sync all chats/conversations
-		console.log("🚀 Starting chat sync for account:", {
-			account_id,
-			provider,
-			user_id,
-			limit,
-			environment: syncConfig.environment,
-			isDev: syncConfig.environment === "development",
-		});
-
-		if (syncConfig.environment === "development") {
-			console.log("🔧 DEV MODE: Will fetch maximum", limit, "chats and stop");
-		}
-
-		while (totalChatsProcessed < limit) {
-			const batchSize = Math.min(pageSize, limit - totalChatsProcessed);
-			const chatsResponse = await step.run(
-				`fetch-chats-${Math.floor(totalChatsProcessed / pageSize)}`,
+			const unipileAccount = await step.run(
+				"find-unipile-account",
 				async () => {
-					console.log("📡 Fetching chats batch:", {
+					return await unipileAccountService.findUnipileAccount(
+						user.id,
 						account_id,
-						limit: batchSize,
-						cursor,
 						provider,
-						totalChatsProcessed,
-						remainingChats: limit - totalChatsProcessed,
-					});
-
-					const response = await unipileService.listChats({
-						account_id,
-						limit: batchSize,
-						cursor,
-						provider: "LINKEDIN",
-					});
-
-					console.log("📨 Chat response received:", {
-						object: response.object,
-						itemsLength: response.items?.length || 0,
-						cursor: response.cursor,
-						accountId: account_id,
-					});
-
-					return response;
+					);
 				},
 			);
 
-			if (!chatsResponse.items || chatsResponse.items.length === 0) {
-				console.log("⚠️ No chats returned, breaking sync loop");
-				break; // No more chats
+			if (!unipileAccount) {
+				throw new Error(
+					`Unipile account not found for user ${user_id}: ${account_id} (${provider})`,
+				);
 			}
 
-			// Step 2: Process each chat batch
-			const { processedChats, processedMessages, processedAttendees } =
-				await step.run(
-					`process-chat-batch-${Math.floor(totalChatsProcessed / pageSize)}`,
+			// Create Unipile service instance
+			const unipileService = createUnipileService({
+				apiKey: api_key,
+				dsn,
+			});
+
+			// Step 0: Start sync tracking
+			await step.run("start-sync-tracking", async () => {
+				return await unipileAccountService.startSync(account_id, provider);
+			});
+
+			// Step 1: Test account connectivity first
+			const connectivityTest = await step.run(
+				"test-account-connectivity",
+				async () => {
+					return await unipileService.testAccountConnectivity(account_id);
+				},
+			);
+
+			if (!connectivityTest.connected) {
+				// Fail sync if connectivity test fails
+				await step.run("fail-sync", async () => {
+					return await unipileAccountService.failSync(
+						account_id,
+						provider,
+						`Account connectivity test failed: ${connectivityTest.error}`,
+					);
+				});
+				throw new Error(
+					`Account connectivity test failed for ${account_id}: ${connectivityTest.error}`,
+				);
+			}
+
+			console.log("✅ Account connectivity verified:", {
+				account_id,
+				provider,
+				accountStatus: connectivityTest.accountInfo?.status,
+			});
+
+			// Log sync configuration
+			const syncConfig = getCurrentSyncConfig();
+
+			let totalChatsProcessed = 0;
+			let totalMessagesProcessed = 0;
+			let totalAttendeesProcessed = 0;
+			let cursor: string | undefined;
+			const pageSize = syncConfig.chat.pageSize;
+
+			// Step 1: Sync all chats/conversations
+			console.log("🚀 Starting chat sync for account:", {
+				account_id,
+				provider,
+				user_id,
+				limit,
+				environment: syncConfig.environment,
+				isDev: syncConfig.environment === "development",
+			});
+
+			if (syncConfig.environment === "development") {
+				console.log("🔧 DEV MODE: Will fetch maximum", limit, "chats and stop");
+			}
+
+			while (totalChatsProcessed < limit) {
+				const batchSize = Math.min(pageSize, limit - totalChatsProcessed);
+				const chatsResponse = await step.run(
+					`fetch-chats-${Math.floor(totalChatsProcessed / pageSize)}`,
 					async () => {
-						let batchChats = 0;
-						let batchMessages = 0;
-						let batchAttendees = 0;
+						console.log("📡 Fetching chats batch:", {
+							account_id,
+							limit: batchSize,
+							cursor,
+							provider,
+							totalChatsProcessed,
+							remainingChats: limit - totalChatsProcessed,
+						});
 
-						// Process only the chats we actually need (respect the limit)
-						const chatsToProcess = chatsResponse.items.slice(
-							0,
-							limit - totalChatsProcessed,
-						);
-						console.log(
-							`📊 Processing ${chatsToProcess.length} chats (${totalChatsProcessed}/${limit} total)`,
-						);
+						const response = await unipileService.listChats({
+							account_id,
+							limit: batchSize,
+							cursor,
+							provider: "LINKEDIN",
+						});
 
-						for (const chatData of chatsToProcess) {
-							try {
-								// Upsert the chat using the service
-								const chat = await unipileChatService.upsertChat(
-									unipileAccount.id,
-									chatData.id,
-									{
-										name: chatData.name,
-										chat_type: chatData.type === 0 ? "direct" : "group",
-										last_message_at: chatData.lastMessage?.timestamp
-											? new Date(chatData.lastMessage.timestamp)
-											: chatData.timestamp
-												? new Date(chatData.timestamp)
-												: undefined,
-									},
-									{
-										provider: normalizeProvider(chatData.account_type),
-										account_type: normalizeAccountType(chatData.account_type),
-										unread_count: chatData.unread_count || chatData.unread || 0,
-										archived: chatData.archived || 0,
-										read_only: chatData.read_only || 0,
-										muted_until:
-											chatData.muted_until === -1
-												? -1n
-												: chatData.muted_until
-													? BigInt(chatData.muted_until)
-													: undefined,
-										organization_id: chatData.organization_id,
-										mailbox_id: chatData.mailbox_id,
-										mailbox_name: chatData.mailbox_name,
-										content_type:
-											chatData.content_type as (typeof unipileContentTypeEnum.enumValues)[number],
-										disabled_features: chatData.disabledFeatures
-											? chatData.disabledFeatures
-											: undefined,
-									},
-								);
+						console.log("📨 Chat response received:", {
+							object: response.object,
+							itemsLength: response.items?.length || 0,
+							cursor: response.cursor,
+							accountId: account_id,
+						});
 
-								batchChats++;
-
-								// Break if we've reached our limit
-								if (totalChatsProcessed + batchChats >= limit) {
-									console.log(
-										`🚫 Reached chat limit (${limit}), stopping processing`,
-									);
-									break;
-								}
-
-								// Step 3: Sync attendees for this chat
-								try {
-									const attendeesResponse =
-										await unipileService.listChatAttendees({
-											chat_id: chatData.id,
-											account_id,
-											limit: syncConfig.attendee.maxPerChat,
-										});
-
-									for (const attendeeData of attendeesResponse.items || []) {
-										// Handle all attendees - create contact if not self, sync profile if self
-										let contactId: string | null = null;
-										const contact = await createContactFromAttendee(
-											unipileContactService,
-											unipileAccount.id,
-											attendeeData,
-											unipileService,
-											account_id,
-										);
-										contactId = contact?.id || null;
-
-										// Then create the attendee with a reference to the contact
-										await unipileChatService.upsertAttendee(
-											chat.id,
-											attendeeData.provider_id, // Use provider_id as the external_id
-											contactId, // Reference to the contact
-											{
-												is_self: attendeeData.is_self || 0,
-												hidden: attendeeData.hidden || 0,
-											},
-										);
-
-										batchAttendees++;
-									}
-								} catch (attendeeError) {
-									console.warn(
-										`Failed to fetch attendees for chat ${chatData.id}:`,
-										attendeeError,
-									);
-								}
-
-								// Step 4: Sync messages for this chat
-								try {
-									let messageCursor: string | undefined;
-									let chatMessagesProcessed = 0;
-									// Use config for message sync limits
-									const messageLimit = syncConfig.message.maxPerChat;
-									const messageBatchSize = syncConfig.message.batchSize;
-
-									if (syncConfig.enableDetailedLogging) {
-										console.log("📨 Message sync config:", {
-											messageLimit,
-											messageBatchSize,
-											environment: syncConfig.environment,
-										});
-									}
-
-									while (chatMessagesProcessed < messageLimit) {
-										const messagesResponse =
-											await unipileService.listChatMessages({
-												chat_id: chatData.id,
-												account_id,
-												limit: messageBatchSize,
-												cursor: messageCursor,
-											});
-
-										if (
-											!messagesResponse.items ||
-											messagesResponse.items.length === 0
-										) {
-											break;
-										}
-
-										for (const messageData of messagesResponse.items) {
-											// Use is_sender field when available, fallback to sender ID matching
-											const isOutgoing =
-												messageData.is_sender === 1 ||
-												messageData.sender_id === account_id ||
-												messageData.sender_id === unipileAccount.account_id;
-
-											// Upsert message using the service
-											const message = await unipileMessageService.upsertMessage(
-												unipileAccount.id,
-												messageData.id,
-												{
-													chat_id: chat.id, // Link to internal chat record
-													external_chat_id: chatData.id, // Store external API chat ID
-													sender_id: messageData.sender_id || undefined,
-													recipient_id: undefined, // Not available in new API structure
-													message_type:
-														messageData.message_type?.toLowerCase() || "text",
-													content: messageData.text || undefined,
-													is_read: messageData.seen === 1,
-													// Only update is_outgoing if we have reliable data (is_sender field)
-													...(messageData.is_sender !== undefined && {
-														is_outgoing: messageData.is_sender === 1,
-													}),
-													sent_at: messageData.timestamp
-														? new Date(messageData.timestamp)
-														: new Date(),
-													sender_urn: messageData.sender_urn,
-													attendee_type: messageData.attendee_type,
-													attendee_distance: messageData.attendee_distance,
-													seen: messageData.seen || 0,
-													hidden: messageData.hidden || 0,
-													deleted: messageData.deleted || 0,
-													edited: messageData.edited || 0,
-													is_event: messageData.is_event || 0,
-													delivered: messageData.delivered || 0,
-													behavior: messageData.behavior || 0,
-													event_type: messageData.event_type || 0,
-													replies: messageData.replies || 0,
-													subject: messageData.subject,
-													parent: messageData.parent,
-													metadata:
-														messageData.quoted || messageData.reactions
-															? {
-																	quoted: messageData.quoted,
-																	reactions: messageData.reactions,
-																	subject: messageData.subject,
-																	reply_to: messageData.reply_to,
-																}
-															: undefined,
-												},
-											);
-
-											batchMessages++;
-
-											// Sync message attachments if present
-											if (messageData.attachments?.length) {
-												console.log(
-													"📎 Processing",
-													messageData.attachments.length,
-													"attachments for historical message",
-													messageData.id,
-												);
-
-												for (const attachmentData of messageData.attachments) {
-													console.log("📎 Processing historical attachment:", {
-														attachmentId: attachmentData.id,
-														type: attachmentData.type,
-														filename:
-															attachmentData.file_name ||
-															attachmentData.filename,
-														hasUrl: !!attachmentData.url,
-														fileSize: attachmentData.file_size,
-														mimeType: attachmentData.mimetype,
-														unavailable: attachmentData.unavailable,
-													});
-
-													// Download attachment content if attachment ID is available
-													let attachmentContent: string | null = null;
-													let finalMimeType =
-														attachmentData.mimetype || attachmentData.mime_type;
-
-													if (
-														attachmentData.id &&
-														!attachmentData.unavailable
-													) {
-														try {
-															console.log(
-																"📎 Downloading historical attachment content:",
-																{
-																	messageId: messageData.id,
-																	attachmentId: attachmentData.id,
-																},
-															);
-
-															const downloadResult =
-																await unipileService.getMessageAttachment(
-																	messageData.id,
-																	attachmentData.id,
-																	account_id,
-																);
-
-															attachmentContent = downloadResult.content;
-															// Use mime type from download if available, fallback to metadata
-															finalMimeType =
-																downloadResult.mime_type || finalMimeType;
-
-															console.log(
-																"✅ Historical attachment content downloaded:",
-																{
-																	attachmentId: attachmentData.id,
-																	contentSize: attachmentContent?.length || 0,
-																	mimeType: finalMimeType,
-																},
-															);
-														} catch (error) {
-															console.warn(
-																"⚠️ Failed to download historical attachment content:",
-																{
-																	attachmentId: attachmentData.id,
-																	error:
-																		error instanceof Error
-																			? error.message
-																			: String(error),
-																},
-															);
-															// Continue without content - we'll still save the metadata
-														}
-													}
-
-													await unipileMessageService.upsertAttachment(
-														message.id,
-														attachmentData.id,
-														{
-															url: attachmentData.url,
-															filename:
-																attachmentData.file_name ||
-																attachmentData.filename,
-															file_size: attachmentData.file_size,
-															mime_type: finalMimeType,
-															content: attachmentContent,
-															unavailable: attachmentData.unavailable || false,
-															url_expires_at: attachmentData.url_expires_at
-																? BigInt(attachmentData.url_expires_at)
-																: undefined,
-															width: attachmentData.size?.width,
-															height: attachmentData.size?.height,
-															duration: attachmentData.duration,
-															sticker: attachmentData.sticker || false,
-															gif: attachmentData.gif || false,
-															voice_note: attachmentData.voice_note || false,
-															starts_at: attachmentData.starts_at
-																? BigInt(attachmentData.starts_at)
-																: undefined,
-															expires_at: attachmentData.expires_at
-																? BigInt(attachmentData.expires_at)
-																: undefined,
-															time_range: attachmentData.time_range,
-														},
-														{
-															attachment_type: attachmentData.type,
-														},
-													);
-
-													console.log(
-														"✅ Successfully processed historical attachment",
-														attachmentData.id,
-													);
-												}
-											}
-										}
-
-										chatMessagesProcessed += messagesResponse.items.length;
-										messageCursor = messagesResponse.cursor;
-
-										if (!messageCursor) {
-											break;
-										}
-									}
-								} catch (messageError) {
-									console.warn(
-										`Failed to fetch messages for chat ${chatData.id}:`,
-										messageError,
-									);
-								}
-							} catch (chatError) {
-								console.warn(
-									`Failed to process chat ${chatData.id}:`,
-									chatError,
-								);
-							}
-						}
-
-						return {
-							processedChats: batchChats,
-							processedMessages: batchMessages,
-							processedAttendees: batchAttendees,
-						};
+						return response;
 					},
 				);
 
-			totalChatsProcessed += processedChats;
-			totalMessagesProcessed += processedMessages;
-			totalAttendeesProcessed += processedAttendees;
+				if (!chatsResponse.items || chatsResponse.items.length === 0) {
+					console.log("⚠️ No chats returned, breaking sync loop");
+					break; // No more chats
+				}
 
-			console.log(
-				`📊 Batch complete: ${totalChatsProcessed}/${limit} chats processed`,
-			);
+				// Step 2: Process each chat batch
+				const { processedChats, processedMessages, processedAttendees } =
+					await step.run(
+						`process-chat-batch-${Math.floor(totalChatsProcessed / pageSize)}`,
+						async () => {
+							let batchChats = 0;
+							let batchMessages = 0;
+							let batchAttendees = 0;
 
-			// Break if we've reached our limit
-			if (totalChatsProcessed >= limit) {
-				console.log(
-					`✅ Reached chat limit (${totalChatsProcessed}/${limit}), stopping sync`,
+							// Process only the chats we actually need (respect the limit)
+							const chatsToProcess = chatsResponse.items.slice(
+								0,
+								limit - totalChatsProcessed,
+							);
+							console.log(
+								`📊 Processing ${chatsToProcess.length} chats (${totalChatsProcessed}/${limit} total)`,
+							);
+
+							for (const chatData of chatsToProcess) {
+								try {
+									// Upsert the chat using the service
+									const chat = await unipileChatService.upsertChat(
+										unipileAccount.id,
+										chatData.id,
+										{
+											name: chatData.name,
+											chat_type: chatData.type === 0 ? "direct" : "group",
+											last_message_at: chatData.lastMessage?.timestamp
+												? new Date(chatData.lastMessage.timestamp)
+												: chatData.timestamp
+													? new Date(chatData.timestamp)
+													: undefined,
+										},
+										{
+											provider: normalizeProvider(chatData.account_type),
+											account_type: normalizeAccountType(chatData.account_type),
+											unread_count:
+												chatData.unread_count || chatData.unread || 0,
+											archived: chatData.archived || 0,
+											read_only: chatData.read_only || 0,
+											muted_until:
+												chatData.muted_until === -1
+													? -1n
+													: chatData.muted_until
+														? BigInt(chatData.muted_until)
+														: undefined,
+											organization_id: chatData.organization_id,
+											mailbox_id: chatData.mailbox_id,
+											mailbox_name: chatData.mailbox_name,
+											content_type:
+												chatData.content_type as (typeof unipileContentTypeEnum.enumValues)[number],
+											disabled_features: chatData.disabledFeatures
+												? chatData.disabledFeatures
+												: undefined,
+										},
+									);
+
+									batchChats++;
+
+									// Break if we've reached our limit
+									if (totalChatsProcessed + batchChats >= limit) {
+										console.log(
+											`🚫 Reached chat limit (${limit}), stopping processing`,
+										);
+										break;
+									}
+
+									// Step 3: Sync attendees for this chat
+									try {
+										const attendeesResponse =
+											await unipileService.listChatAttendees({
+												chat_id: chatData.id,
+												account_id,
+												limit: syncConfig.attendee.maxPerChat,
+											});
+
+										for (const attendeeData of attendeesResponse.items || []) {
+											// Handle all attendees - create contact if not self, sync profile if self
+											let contactId: string | null = null;
+											const contact = await createContactFromAttendee(
+												unipileContactService,
+												unipileAccount.id,
+												attendeeData,
+												unipileService,
+												account_id,
+											);
+											contactId = contact?.id || null;
+
+											// Then create the attendee with a reference to the contact
+											await unipileChatService.upsertAttendee(
+												chat.id,
+												attendeeData.provider_id, // Use provider_id as the external_id
+												contactId, // Reference to the contact
+												{
+													is_self: attendeeData.is_self || 0,
+													hidden: attendeeData.hidden || 0,
+												},
+											);
+
+											batchAttendees++;
+										}
+									} catch (attendeeError) {
+										console.warn(
+											`Failed to fetch attendees for chat ${chatData.id}:`,
+											attendeeError,
+										);
+									}
+
+									// Step 4: Sync messages for this chat
+									try {
+										let messageCursor: string | undefined;
+										let chatMessagesProcessed = 0;
+										// Use config for message sync limits
+										const messageLimit = syncConfig.message.maxPerChat;
+										const messageBatchSize = syncConfig.message.batchSize;
+
+										if (syncConfig.enableDetailedLogging) {
+											console.log("📨 Message sync config:", {
+												messageLimit,
+												messageBatchSize,
+												environment: syncConfig.environment,
+											});
+										}
+
+										while (chatMessagesProcessed < messageLimit) {
+											const messagesResponse =
+												await unipileService.listChatMessages({
+													chat_id: chatData.id,
+													account_id,
+													limit: messageBatchSize,
+													cursor: messageCursor,
+												});
+
+											if (
+												!messagesResponse.items ||
+												messagesResponse.items.length === 0
+											) {
+												break;
+											}
+
+											for (const messageData of messagesResponse.items) {
+												// Use is_sender field when available, fallback to sender ID matching
+												const isOutgoing =
+													messageData.is_sender === 1 ||
+													messageData.sender_id === account_id ||
+													messageData.sender_id === unipileAccount.account_id;
+
+												// Upsert message using the service
+												const message =
+													await unipileMessageService.upsertMessage(
+														unipileAccount.id,
+														messageData.id,
+														{
+															chat_id: chat.id, // Link to internal chat record
+															external_chat_id: chatData.id, // Store external API chat ID
+															sender_id: messageData.sender_id || undefined,
+															recipient_id: undefined, // Not available in new API structure
+															message_type:
+																messageData.message_type?.toLowerCase() ||
+																"text",
+															content: messageData.text || undefined,
+															is_read: messageData.seen === 1,
+															// Only update is_outgoing if we have reliable data (is_sender field)
+															...(messageData.is_sender !== undefined && {
+																is_outgoing: messageData.is_sender === 1,
+															}),
+															sent_at: messageData.timestamp
+																? new Date(messageData.timestamp)
+																: new Date(),
+															sender_urn: messageData.sender_urn,
+															attendee_type: messageData.attendee_type,
+															attendee_distance: messageData.attendee_distance,
+															seen: messageData.seen || 0,
+															hidden: messageData.hidden || 0,
+															deleted: messageData.deleted || 0,
+															edited: messageData.edited || 0,
+															is_event: messageData.is_event || 0,
+															delivered: messageData.delivered || 0,
+															behavior: messageData.behavior || 0,
+															event_type: messageData.event_type || 0,
+															replies: messageData.replies || 0,
+															subject: messageData.subject,
+															parent: messageData.parent,
+															metadata:
+																messageData.quoted || messageData.reactions
+																	? {
+																			quoted: messageData.quoted,
+																			reactions: messageData.reactions,
+																			subject: messageData.subject,
+																			reply_to: messageData.reply_to,
+																		}
+																	: undefined,
+														},
+													);
+
+												batchMessages++;
+
+												// Sync message attachments if present
+												if (messageData.attachments?.length) {
+													console.log(
+														"📎 Processing",
+														messageData.attachments.length,
+														"attachments for historical message",
+														messageData.id,
+													);
+
+													for (const attachmentData of messageData.attachments) {
+														console.log(
+															"📎 Processing historical attachment:",
+															{
+																attachmentId: attachmentData.id,
+																type: attachmentData.type,
+																filename:
+																	attachmentData.file_name ||
+																	attachmentData.filename,
+																hasUrl: !!attachmentData.url,
+																fileSize: attachmentData.file_size,
+																mimeType: attachmentData.mimetype,
+																unavailable: attachmentData.unavailable,
+															},
+														);
+
+														// Download attachment content if attachment ID is available
+														let attachmentContent: string | null = null;
+														let finalMimeType =
+															attachmentData.mimetype ||
+															attachmentData.mime_type;
+
+														if (
+															attachmentData.id &&
+															!attachmentData.unavailable
+														) {
+															try {
+																console.log(
+																	"📎 Downloading historical attachment content:",
+																	{
+																		messageId: messageData.id,
+																		attachmentId: attachmentData.id,
+																	},
+																);
+
+																const downloadResult =
+																	await unipileService.getMessageAttachment(
+																		messageData.id,
+																		attachmentData.id,
+																		account_id,
+																	);
+
+																attachmentContent = downloadResult.content;
+																// Use mime type from download if available, fallback to metadata
+																finalMimeType =
+																	downloadResult.mime_type || finalMimeType;
+
+																console.log(
+																	"✅ Historical attachment content downloaded:",
+																	{
+																		attachmentId: attachmentData.id,
+																		contentSize: attachmentContent?.length || 0,
+																		mimeType: finalMimeType,
+																	},
+																);
+															} catch (error) {
+																console.warn(
+																	"⚠️ Failed to download historical attachment content:",
+																	{
+																		attachmentId: attachmentData.id,
+																		error:
+																			error instanceof Error
+																				? error.message
+																				: String(error),
+																	},
+																);
+																// Continue without content - we'll still save the metadata
+															}
+														}
+
+														await unipileMessageService.upsertAttachment(
+															message.id,
+															attachmentData.id,
+															{
+																url: attachmentData.url,
+																filename:
+																	attachmentData.file_name ||
+																	attachmentData.filename,
+																file_size: attachmentData.file_size,
+																mime_type: finalMimeType,
+																content: attachmentContent,
+																unavailable:
+																	attachmentData.unavailable || false,
+																url_expires_at: attachmentData.url_expires_at
+																	? BigInt(attachmentData.url_expires_at)
+																	: undefined,
+																width: attachmentData.size?.width,
+																height: attachmentData.size?.height,
+																duration: attachmentData.duration,
+																sticker: attachmentData.sticker || false,
+																gif: attachmentData.gif || false,
+																voice_note: attachmentData.voice_note || false,
+																starts_at: attachmentData.starts_at
+																	? BigInt(attachmentData.starts_at)
+																	: undefined,
+																expires_at: attachmentData.expires_at
+																	? BigInt(attachmentData.expires_at)
+																	: undefined,
+																time_range: attachmentData.time_range,
+															},
+															{
+																attachment_type: attachmentData.type,
+															},
+														);
+
+														console.log(
+															"✅ Successfully processed historical attachment",
+															attachmentData.id,
+														);
+													}
+												}
+											}
+
+											chatMessagesProcessed += messagesResponse.items.length;
+											messageCursor = messagesResponse.cursor;
+
+											if (!messageCursor) {
+												break;
+											}
+										}
+									} catch (messageError) {
+										console.warn(
+											`Failed to fetch messages for chat ${chatData.id}:`,
+											messageError,
+										);
+									}
+								} catch (chatError) {
+									console.warn(
+										`Failed to process chat ${chatData.id}:`,
+										chatError,
+									);
+								}
+							}
+
+							return {
+								processedChats: batchChats,
+								processedMessages: batchMessages,
+								processedAttendees: batchAttendees,
+							};
+						},
+					);
+
+				totalChatsProcessed += processedChats;
+				totalMessagesProcessed += processedMessages;
+				totalAttendeesProcessed += processedAttendees;
+
+				// Update sync progress
+				await step.run(
+					`update-sync-progress-${Math.floor(totalChatsProcessed / pageSize)}`,
+					async () => {
+						return await unipileAccountService.updateSyncProgress(
+							account_id,
+							provider,
+							{
+								chats_processed: totalChatsProcessed,
+								messages_processed: totalMessagesProcessed,
+								attendees_processed: totalAttendeesProcessed,
+								total_chats: limit,
+								current_step: `Processing batch ${Math.floor(totalChatsProcessed / pageSize) + 1}`,
+							},
+						);
+					},
 				);
-				break;
+
+				console.log(
+					`📊 Batch complete: ${totalChatsProcessed}/${limit} chats processed`,
+				);
+
+				// Break if we've reached our limit
+				if (totalChatsProcessed >= limit) {
+					console.log(
+						`✅ Reached chat limit (${totalChatsProcessed}/${limit}), stopping sync`,
+					);
+					break;
+				}
+
+				// In dev mode, ALWAYS stop after the first page regardless of cursor availability
+				if (syncConfig.environment === "development") {
+					console.log("🔧 DEV MODE: Stopping after first page as configured");
+					break;
+				}
+
+				// Break if no more pages
+				if (!chatsResponse.cursor) {
+					console.log("✅ No more pages available, stopping sync");
+					break;
+				}
+
+				cursor = chatsResponse.cursor;
+				console.log(`➡️ Continuing with cursor: ${cursor}`);
 			}
 
-			// In dev mode, ALWAYS stop after the first page regardless of cursor availability
-			if (syncConfig.environment === "development") {
-				console.log("🔧 DEV MODE: Stopping after first page as configured");
-				break;
-			}
+			// Complete sync tracking
+			await step.run("complete-sync", async () => {
+				return await unipileAccountService.completeSync(account_id, provider, {
+					total_chats_processed: totalChatsProcessed,
+					total_messages_processed: totalMessagesProcessed,
+					total_attendees_processed: totalAttendeesProcessed,
+				});
+			});
 
-			// Break if no more pages
-			if (!chatsResponse.cursor) {
-				console.log("✅ No more pages available, stopping sync");
-				break;
-			}
-
-			cursor = chatsResponse.cursor;
-			console.log(`➡️ Continuing with cursor: ${cursor}`);
-		}
-
-		// Update sync status using the service
-		await step.run("update-sync-status", async () => {
-			return await unipileAccountService.updateAccountStatus(
+			return {
+				user_id,
 				account_id,
 				provider,
-				"connected",
-			);
-		});
+				totalChatsProcessed,
+				totalMessagesProcessed,
+				totalAttendeesProcessed,
+				message: "Complete inbox sync completed successfully",
+			};
+		} catch (error) {
+			// Fail sync on any error
+			try {
+				await step.run("fail-sync-on-error", async () => {
+					return await unipileAccountService.failSync(
+						account_id,
+						provider,
+						error instanceof Error ? error.message : String(error),
+					);
+				});
+			} catch (failError) {
+				console.error("Failed to update sync status on error:", failError);
+			}
 
-		return {
-			user_id,
-			account_id,
-			provider,
-			totalChatsProcessed,
-			totalMessagesProcessed,
-			totalAttendeesProcessed,
-			message: "Complete inbox sync completed successfully",
-		};
+			// Re-throw the original error
+			throw error;
+		}
 	},
 );
