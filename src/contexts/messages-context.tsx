@@ -38,9 +38,9 @@ export type MessagesAction =
 	| { type: "MERGE_MESSAGES"; payload: { chatId: string; messages: Message[] } }
 	| { type: "ADD_MESSAGE"; payload: { chatId: string; message: Message } }
 	| {
-			type: "UPDATE_MESSAGE";
-			payload: { chatId: string; messageId: string; updates: Partial<Message> };
-	  }
+		type: "UPDATE_MESSAGE";
+		payload: { chatId: string; messageId: string; updates: Partial<Message> };
+	}
 	| { type: "REMOVE_MESSAGE"; payload: { chatId: string; messageId: string } }
 	| { type: "SET_LOADING"; payload: { chatId: string; loading: boolean } }
 	| { type: "SET_ERROR"; payload: { chatId: string; error: string | null } }
@@ -80,10 +80,8 @@ function messagesReducer(
 			const { chatId, messages: newMessages } = action.payload;
 			const existingMessages = state.messagesByChatId[chatId] || [];
 
-			// Keep optimistic and failed messages
-			const optimisticMessages = existingMessages.filter(
-				(msg) => msg.isOptimistic && !msg.isFailed,
-			);
+			// Only keep failed messages when merging with fresh database data
+			// Remove optimistic messages as they should be replaced by real database messages
 			const failedMessages = existingMessages.filter((msg) => msg.isFailed);
 
 			// Simple message processing: just fix optimistic messages
@@ -97,10 +95,9 @@ function messagesReducer(
 				});
 			};
 
-			// Merge all messages and process them
+			// Merge database messages with only failed messages (no optimistic ones)
 			const allMessages = [
 				...newMessages,
-				...optimisticMessages,
 				...failedMessages,
 			];
 			const processedMessages = processMessages(allMessages);

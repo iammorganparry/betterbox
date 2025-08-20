@@ -127,6 +127,10 @@ export const unipileMessageAttachments = pgTable(
 		starts_at: bigint("starts_at", { mode: "bigint" }),
 		expires_at: bigint("expires_at", { mode: "bigint" }),
 		time_range: integer("time_range"),
+		// R2 storage fields
+		r2_key: text("r2_key"), // Path in R2 bucket
+		r2_url: text("r2_url"), // Public or signed R2 URL
+		r2_uploaded_at: timestamp("r2_uploaded_at"), // When uploaded to R2
 		is_deleted: boolean("is_deleted").default(false).notNull(),
 		created_at: timestamp("created_at").defaultNow().notNull(),
 		updated_at: timestamp("updated_at").defaultNow().notNull(),
@@ -135,6 +139,7 @@ export const unipileMessageAttachments = pgTable(
 		messageIdIdx: index("UnipileMessageAttachment_message_id_idx").on(
 			table.message_id,
 		),
+		r2KeyIdx: index("UnipileMessageAttachment_r2_key_idx").on(table.r2_key),
 		uniqueMessageExternal: unique(
 			"UnipileMessageAttachment_message_id_external_id_key",
 		).on(table.message_id, table.external_id),

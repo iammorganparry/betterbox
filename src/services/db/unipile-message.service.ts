@@ -150,7 +150,7 @@ export class UnipileMessageService {
 	async getMessagesByChat(
 		chatId: string,
 		options: FindMessagesOptions = {},
-	): Promise<UnipileMessage[]> {
+	): Promise<any[]> { // Return any[] to allow for extended types with attachments
 		const {
 			include_attachments = false,
 			include_chat = false,
@@ -165,6 +165,44 @@ export class UnipileMessageService {
 			is_read,
 		} = options;
 
+		if (include_attachments) {
+			// Use relational query when attachments are needed
+			const conditions: any[] = [eq(unipileMessages.chat_id, chatId)];
+
+			if (!include_deleted) {
+				conditions.push(eq(unipileMessages.is_deleted, false));
+			}
+
+			if (message_type) {
+				conditions.push(eq(unipileMessages.message_type, message_type));
+			}
+
+			if (is_outgoing !== undefined) {
+				conditions.push(eq(unipileMessages.is_outgoing, is_outgoing));
+			}
+
+			if (is_read !== undefined) {
+				conditions.push(eq(unipileMessages.is_read, is_read));
+			}
+
+			const results = await this.drizzleDb.query.unipileMessages.findMany({
+				where: and(...conditions),
+				with: {
+					unipileMessageAttachments: {
+						where: eq(unipileMessageAttachments.is_deleted, false),
+					},
+				},
+				orderBy: order_direction === "desc"
+					? desc(unipileMessages[order_by])
+					: asc(unipileMessages[order_by]),
+				limit: limit ?? 100,
+				offset: offset ?? 0,
+			});
+
+			return results;
+		}
+
+		// Original logic for simple queries without relations
 		const conditions = [eq(unipileMessages.chat_id, chatId)];
 
 		if (!include_deleted) {
@@ -791,5 +829,137 @@ export class UnipileMessageService {
 			previousMessages: previousMessages.reverse(), // Reverse to chronological order
 			nextMessages: nextMessages,
 		};
+	}
+
+	/**
+	 * Ensure attachment has a valid URL or content available
+	 * Prefers R2 URL, falls back to Unipile if R2 is missing and fetches from Unipile + uploads to R2
+	 * Note: This method should be called from contexts that have access to injected services
+	 * For use in TRPC/API routes, use the injected services instead of this method
+	 */
+	async ensureAttachmentAvailable(
+		attachment: UnipileMessageAttachment,
+		unipileAccountId: string,
+		unipileService: any, // Service injected from context
+		r2Service: any, // Service injected from context
+	): Promise<UnipileMessageAttachment> {
+		// If we have a valid R2 URL, use it (R2 URLs don't expire)
+		if (attachment.r2_url && !attachment.unavailable) {
+			console.log(`✅ Using R2 URL for attachment ${attachment.id}`);
+			return attachment;
+		}
+
+		// Check if Unipile URL needs refreshing
+		const unipileNeedsRefresh = 
+			attachment.unavailable || 
+			!attachment.url || 
+			(attachment.url_expires_at && attachment.url_expires_at < BigInt(Date.now() + 5 * 60 * 1000)); // Expires within 5 minutes
+
+		// If we have valid Unipile URL and no R2, still use Unipile for now
+		if (!unipileNeedsRefresh && !attachment.r2_url) {
+			console.log(`✅ Using Unipile URL for attachment ${attachment.id} (no R2 available)`);
+			return attachment;
+		}
+
+		console.log(`🔄 Refreshing attachment ${attachment.id} from Unipile and uploading to R2...`);
+
+		try {
+			// Get the message to find its external_id for the API call
+			const message = await this.drizzleDb
+				.select({ external_id: unipileMessages.external_id })
+				.from(unipileMessages)
+				.where(eq(unipileMessages.id, attachment.message_id))
+				.limit(1);
+
+			if (!message[0]) {
+				console.warn(`❌ Message not found for attachment ${attachment.id}`);
+				return attachment;
+			}
+
+			// Fetch fresh attachment data from Unipile using getMessageAttachment (returns base64 content)
+			const freshAttachment = await unipileService.getMessageAttachment(
+				message[0].external_id,
+				attachment.external_id,
+				unipileAccountId,
+			);
+
+			// Upload to R2 if we have content and no R2 URL yet
+			let r2Key: string | undefined = attachment.r2_key ?? undefined;
+			let r2Url: string | undefined = attachment.r2_url ?? undefined;
+			let r2UploadedAt: Date | undefined = attachment.r2_uploaded_at ? new Date(attachment.r2_uploaded_at) : undefined;
+
+			if (freshAttachment.content && !r2Url) {
+				try {
+					// Convert base64 to Uint8Array
+					const binaryData = Uint8Array.from(atob(freshAttachment.content), c => c.charCodeAt(0));
+
+					// Generate R2 key if we don't have one
+					if (!r2Key) {
+						r2Key = r2Service.generateAttachmentKey(
+							attachment.message_id,
+							attachment.filename,
+							freshAttachment.mime_type || attachment.mime_type,
+						);
+					}
+
+					// Upload to R2
+					r2Url = await r2Service.upload(
+						r2Key,
+						binaryData,
+						freshAttachment.mime_type || attachment.mime_type || 'application/octet-stream',
+						{
+							originalFilename: attachment.filename || 'attachment',
+							messageId: attachment.message_id,
+							attachmentId: attachment.external_id,
+						},
+					);
+
+					r2UploadedAt = new Date();
+
+					console.log(`✅ Uploaded attachment ${attachment.id} to R2: ${r2Key}`);
+				} catch (r2Error) {
+					console.warn(`⚠️ Failed to upload attachment ${attachment.id} to R2:`, r2Error);
+					// Continue without R2 - we'll still update with Unipile data
+				}
+			}
+
+			// Update the attachment in the database with fresh data + R2 info
+			const updatedAttachment = await this.upsertAttachment(
+				attachment.message_id,
+				attachment.external_id,
+				{
+					// Only update fields we can get from getMessageAttachment
+					content: r2Url ? undefined : freshAttachment.content, // Only store base64 if no R2
+					mime_type: freshAttachment.mime_type || attachment.mime_type,
+					unavailable: false, // We successfully got content
+					// R2 fields
+					r2_key: r2Key,
+					r2_url: r2Url,
+					r2_uploaded_at: r2UploadedAt,
+				},
+			);
+
+			console.log(`✅ Refreshed attachment ${attachment.id} from Unipile${r2Url ? ' + uploaded to R2' : ''}`);
+			return updatedAttachment;
+
+		} catch (error) {
+			console.error(`❌ Failed to refresh attachment ${attachment.id} from Unipile:`, error);
+			
+			// Mark as unavailable if we can't fetch it
+			if (!attachment.unavailable) {
+				try {
+					const updatedAttachment = await this.upsertAttachment(
+						attachment.message_id,
+						attachment.external_id,
+						{ unavailable: true },
+					);
+					return updatedAttachment;
+				} catch (updateError) {
+					console.error(`❌ Failed to mark attachment ${attachment.id} as unavailable:`, updateError);
+				}
+			}
+			
+			return attachment;
+		}
 	}
 }

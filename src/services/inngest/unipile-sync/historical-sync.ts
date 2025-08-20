@@ -401,6 +401,8 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 														let finalMimeType =
 															attachmentData.mimetype ||
 															attachmentData.mime_type;
+														let r2Key: string | undefined;
+														let r2Url: string | undefined;
 
 														if (
 															attachmentData.id &&
@@ -435,6 +437,47 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 																		mimeType: finalMimeType,
 																	},
 																);
+
+																// Upload to R2 if we have content
+																if (attachmentContent && finalMimeType) {
+																	try {
+																		const r2Service = services.r2Service;
+
+																		// Convert base64 to Uint8Array
+																		const binaryData = Uint8Array.from(atob(attachmentContent), c => c.charCodeAt(0));
+
+																		// Generate R2 key
+																		r2Key = r2Service.generateAttachmentKey(
+																			message.id,
+																			attachmentData.file_name || attachmentData.filename,
+																			finalMimeType,
+																		);
+
+																		// Upload to R2
+																		r2Url = await r2Service.upload(
+																			r2Key,
+																			binaryData,
+																			finalMimeType,
+																			{
+																				originalFilename: attachmentData.file_name || attachmentData.filename || 'attachment',
+																				messageId: message.id,
+																				attachmentId: attachmentData.id,
+																			},
+																		);
+
+																		console.log("✅ Uploaded historical attachment to R2:", {
+																			attachmentId: attachmentData.id,
+																			r2Key,
+																			r2Url,
+																		});
+																	} catch (r2Error) {
+																		console.warn("⚠️ Failed to upload historical attachment to R2:", {
+																			attachmentId: attachmentData.id,
+																			error: r2Error instanceof Error ? r2Error.message : String(r2Error),
+																		});
+																		// Continue without R2 - we'll still save the original content
+																	}
+																}
 															} catch (error) {
 																console.warn(
 																	"⚠️ Failed to download historical attachment content:",
@@ -460,7 +503,7 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 																	attachmentData.filename,
 																file_size: attachmentData.file_size,
 																mime_type: finalMimeType,
-																content: attachmentContent,
+																content: r2Url ? undefined : attachmentContent, // Only store base64 if no R2 URL
 																unavailable:
 																	attachmentData.unavailable || false,
 																url_expires_at: attachmentData.url_expires_at
@@ -479,6 +522,10 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 																	? BigInt(attachmentData.expires_at)
 																	: undefined,
 																time_range: attachmentData.time_range,
+																// R2 fields
+																r2_key: r2Key,
+																r2_url: r2Url,
+																r2_uploaded_at: r2Url ? new Date() : undefined,
 															},
 															{
 																attachment_type: attachmentData.type,

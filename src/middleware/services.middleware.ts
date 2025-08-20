@@ -10,6 +10,7 @@ import { UserService } from "~/services/db/user.service";
 
 import { InngestMiddleware } from "inngest";
 import { env } from "~/env";
+import { createR2Service } from "~/services/r2/r2.service";
 import { RealtimeService } from "~/services/realtime.service";
 import { createUnipileService } from "~/services/unipile/unipile.service";
 
@@ -28,6 +29,7 @@ export interface Services {
 
 	realtimeService: RealtimeService;
 	unipileService: ReturnType<typeof createUnipileService>;
+	r2Service: ReturnType<typeof createR2Service>;
 }
 
 /**
@@ -49,6 +51,7 @@ function createServices(database: Database): Services {
 			apiKey: env.UNIPILE_API_KEY,
 			dsn: env.UNIPILE_DSN,
 		}),
+		r2Service: createR2Service(),
 	};
 }
 

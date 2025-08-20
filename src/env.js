@@ -17,6 +17,11 @@ export const env = createEnv({
 		UNIPILE_WEBHOOK_SECRET: z.string().optional(),
 		STRIPE_SECRET_KEY: z.string().min(1),
 		STRIPE_WEBHOOK_SECRET: z.string().optional(),
+		// Cloudflare R2 Storage
+		R2_ENDPOINT: z.string().url(),
+		R2_BUCKET: z.string().min(1),
+		R2_ACCESS_KEY: z.string().min(1),
+		R2_SECRET_KEY: z.string().min(1),
 	},
 
 	/**
@@ -39,6 +44,10 @@ export const env = createEnv({
 	 * middlewares) or client-side so we need to destruct manually.
 	 */
 	runtimeEnv: {
+		R2_ENDPOINT: process.env.R2_ENDPOINT,
+		R2_BUCKET: process.env.R2_BUCKET,
+		R2_ACCESS_KEY: process.env.R2_ACCESS_KEY,
+		R2_SECRET_KEY: process.env.R2_SECRET_KEY,
 		DATABASE_URL: process.env.DATABASE_URL,
 		NODE_ENV: process.env.NODE_ENV,
 		CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
