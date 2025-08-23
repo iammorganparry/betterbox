@@ -104,7 +104,6 @@ export const ButtonGroup = React.forwardRef<
 			ref={ref}
 			className={cn("tiptap-button-group", className)}
 			data-orientation={orientation}
-			role="group"
 			{...props}
 		>
 			{children}

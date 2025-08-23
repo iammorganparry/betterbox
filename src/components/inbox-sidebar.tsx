@@ -628,15 +628,21 @@ export default function InboxSidebar() {
 		}
 	};
 
-	// Flatten the infinite query pages
+	// Flatten the infinite query pages and deduplicate by chat ID
 	const typedChats = chatsData?.pages.flatMap((page) => page.chats) || [];
 
+	// Deduplicate chats by ID to prevent duplicate keys in React
+	const uniqueChats = Array.from(
+		new Map(typedChats.map((chat) => [chat.id, chat])).values(),
+	);
+
 	console.log("typedChats", typedChats);
+	console.log("uniqueChats", uniqueChats);
 
 	// Get chats to display based on folder selection
 	const chatsToDisplay: ChatData[] =
 		selectedFolderId === "all"
-			? typedChats
+			? uniqueChats
 			: (folderChatsData as unknown as ChatFolderAssignment[])?.map(
 					(assignment) => assignment.chat,
 				) || [];
@@ -900,7 +906,7 @@ export default function InboxSidebar() {
 							folder={{
 								id: "all",
 								name: "All Chats",
-								chat_count: typedChats.length,
+								chat_count: uniqueChats.length,
 							}}
 							isSelected={selectedFolderId === "all"}
 							onClick={() => setSelectedFolderId("all")}
@@ -996,7 +1002,7 @@ export default function InboxSidebar() {
 													key={mail.email}
 													mail={mail}
 													selectedChatId={selectedChatId}
-													chatsData={typedChats}
+													chatsData={uniqueChats}
 													handleChatClick={handleChatClick}
 													markingAsReadId={markingAsReadId}
 													handleMarkAsRead={handleMarkAsRead}

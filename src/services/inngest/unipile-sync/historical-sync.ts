@@ -6,6 +6,8 @@ import {
 	createContactFromAttendee,
 	createUnipileService,
 	getCurrentSyncConfig,
+	isCompanyMessage,
+	isOrganizationUrn,
 	normalizeAccountType,
 	normalizeProvider,
 } from "./shared";
@@ -120,6 +122,8 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 			let totalChatsProcessed = 0;
 			let totalMessagesProcessed = 0;
 			let totalAttendeesProcessed = 0;
+			let skippedCompanyChats = 0;
+			const skippedCompanyMessages = 0;
 			let cursor: string | undefined;
 			const pageSize = syncConfig.chat.pageSize;
 
@@ -194,6 +198,40 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 
 							for (const chatData of chatsToProcess) {
 								try {
+									// Check if this is a company page message and should be filtered
+									// Note: listChats API doesn't include attendees, so we filter based on available data
+									const isCompanyChat =
+										// Organization-specific fields
+										!!chatData.organization_id ||
+										// Company-specific content types
+										["inmail", "sponsored", "linkedin_offer"].includes(
+											chatData.content_type || "",
+										) ||
+										// Check last message sender URN pattern
+										isOrganizationUrn(chatData.lastMessage?.sender_urn) ||
+										isOrganizationUrn(chatData.lastMessage?.sender_id);
+
+									if (isCompanyChat && !syncConfig.includeCompanyMessages) {
+										if (syncConfig.enableDetailedLogging) {
+											console.log("🚫 Skipping company chat:", {
+												chatId: chatData.id,
+												chatName: chatData.name,
+												organizationId: chatData.organization_id,
+												contentType: chatData.content_type,
+												lastMessageSender:
+													chatData.lastMessage?.sender_urn ||
+													chatData.lastMessage?.sender_id,
+												lastMessageSenderIsOrg: isOrganizationUrn(
+													chatData.lastMessage?.sender_urn ||
+														chatData.lastMessage?.sender_id,
+												),
+											});
+										}
+										skippedCompanyChats++;
+										// Skip entire chat processing
+										continue;
+									}
+
 									// Upsert the chat using the service
 									const chat = await unipileChatService.upsertChat(
 										unipileAccount.id,
@@ -444,12 +482,16 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 																		const r2Service = services.r2Service;
 
 																		// Convert base64 to Uint8Array
-																		const binaryData = Uint8Array.from(atob(attachmentContent), c => c.charCodeAt(0));
+																		const binaryData = Uint8Array.from(
+																			atob(attachmentContent),
+																			(c) => c.charCodeAt(0),
+																		);
 
 																		// Generate R2 key
 																		r2Key = r2Service.generateAttachmentKey(
 																			message.id,
-																			attachmentData.file_name || attachmentData.filename,
+																			attachmentData.file_name ||
+																				attachmentData.filename,
 																			finalMimeType,
 																		);
 
@@ -459,22 +501,34 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 																			binaryData,
 																			finalMimeType,
 																			{
-																				originalFilename: attachmentData.file_name || attachmentData.filename || 'attachment',
+																				originalFilename:
+																					attachmentData.file_name ||
+																					attachmentData.filename ||
+																					"attachment",
 																				messageId: message.id,
 																				attachmentId: attachmentData.id,
 																			},
 																		);
 
-																		console.log("✅ Uploaded historical attachment to R2:", {
-																			attachmentId: attachmentData.id,
-																			r2Key,
-																			r2Url,
-																		});
+																		console.log(
+																			"✅ Uploaded historical attachment to R2:",
+																			{
+																				attachmentId: attachmentData.id,
+																				r2Key,
+																				r2Url,
+																			},
+																		);
 																	} catch (r2Error) {
-																		console.warn("⚠️ Failed to upload historical attachment to R2:", {
-																			attachmentId: attachmentData.id,
-																			error: r2Error instanceof Error ? r2Error.message : String(r2Error),
-																		});
+																		console.warn(
+																			"⚠️ Failed to upload historical attachment to R2:",
+																			{
+																				attachmentId: attachmentData.id,
+																				error:
+																					r2Error instanceof Error
+																						? r2Error.message
+																						: String(r2Error),
+																			},
+																		);
 																		// Continue without R2 - we'll still save the original content
 																	}
 																}
@@ -584,6 +638,8 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 								chats_processed: totalChatsProcessed,
 								messages_processed: totalMessagesProcessed,
 								attendees_processed: totalAttendeesProcessed,
+								skipped_company_chats: skippedCompanyChats,
+								skipped_company_messages: skippedCompanyMessages,
 								total_chats: limit,
 								current_step: `Processing batch ${Math.floor(totalChatsProcessed / pageSize) + 1}`,
 							},
@@ -625,7 +681,21 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 					total_chats_processed: totalChatsProcessed,
 					total_messages_processed: totalMessagesProcessed,
 					total_attendees_processed: totalAttendeesProcessed,
+					skipped_company_chats: skippedCompanyChats,
+					skipped_company_messages: skippedCompanyMessages,
 				});
+			});
+
+			// Log final summary
+			console.log("✅ Historical sync completed:", {
+				account_id,
+				provider,
+				chatsProcessed: totalChatsProcessed,
+				messagesProcessed: totalMessagesProcessed,
+				attendeesProcessed: totalAttendeesProcessed,
+				skippedCompanyChats,
+				skippedCompanyMessages,
+				totalTime: Date.now(),
 			});
 
 			return {
@@ -635,6 +705,8 @@ export const unipileHistoricalMessageSync = inngest.createFunction(
 				totalChatsProcessed,
 				totalMessagesProcessed,
 				totalAttendeesProcessed,
+				skippedCompanyChats,
+				skippedCompanyMessages,
 				message: "Complete inbox sync completed successfully",
 			};
 		} catch (error) {

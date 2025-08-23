@@ -7,6 +7,8 @@ import {
 	createUnipileService,
 	env,
 	getCurrentSyncConfig,
+	isCompanyMessage,
+	isOrganizationUrn,
 	normalizeAccountType,
 	normalizeProvider,
 } from "./shared";
@@ -47,6 +49,26 @@ export const _handleMessageReceived = async ({
 		folder,
 		is_group,
 	} = data;
+
+	// Check if this is a company page message and should be filtered
+	if (isCompanyMessage({ sender, attendees })) {
+		console.log("🚫 Company-page message ignored:", {
+			messageId: message_id,
+			accountId: account_id,
+			provider: provider,
+			senderProviderId: sender?.attendee_provider_id?.substring(0, 50),
+			senderIsOrg: isOrganizationUrn(sender?.attendee_provider_id),
+			attendeeCount: attendees?.length || 0,
+			chatId: chat_id,
+			chatContentType: chat_content_type,
+		});
+		return {
+			filtered: true,
+			reason: "company_page_message",
+			messageId: message_id,
+			accountId: account_id,
+		};
+	}
 
 	// Find the Unipile account
 	const unipileAccount = await step.run("find-unipile-account", async () => {
@@ -362,7 +384,10 @@ export const _handleMessageReceived = async ({
 									const r2Service = services.r2Service;
 
 									// Convert base64 to Uint8Array
-									const binaryData = Uint8Array.from(atob(attachmentContent), c => c.charCodeAt(0));
+									const binaryData = Uint8Array.from(
+										atob(attachmentContent),
+										(c) => c.charCodeAt(0),
+									);
 
 									// Generate R2 key
 									r2Key = r2Service.generateAttachmentKey(
@@ -377,7 +402,7 @@ export const _handleMessageReceived = async ({
 										binaryData,
 										finalMimeType,
 										{
-											originalFilename: attachmentData.filename || 'attachment',
+											originalFilename: attachmentData.filename || "attachment",
 											messageId: savedMessage.id,
 											attachmentId: attachmentData.id,
 										},
@@ -391,7 +416,10 @@ export const _handleMessageReceived = async ({
 								} catch (r2Error) {
 									console.warn("⚠️ Failed to upload attachment to R2:", {
 										attachmentId: attachmentData.id,
-										error: r2Error instanceof Error ? r2Error.message : String(r2Error),
+										error:
+											r2Error instanceof Error
+												? r2Error.message
+												: String(r2Error),
 									});
 									// Continue without R2 - we'll still save the original content
 								}

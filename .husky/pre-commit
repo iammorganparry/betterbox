@@ -3,8 +3,8 @@
 
 # Run typecheck
 echo "🔍 Running TypeScript type check..."
-pnpm typecheck
+yarn typecheck
 
 # Run biome format and check
 echo "🎨 Running Biome format and check..."
-pnpm check:unsafe
+yarn check:unsafe

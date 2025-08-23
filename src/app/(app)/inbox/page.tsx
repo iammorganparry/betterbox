@@ -61,7 +61,13 @@ export default function InboxPage() {
 
 	// Syncing state
 	if (isSyncing && syncingAccount) {
-		const progress = syncingAccount.sync_progress as any;
+		const progress = syncingAccount.sync_progress as {
+			chats_processed: number;
+			total_chats: number;
+			messages_processed: number;
+			attendees_processed: number;
+			current_step: string;
+		};
 		const progressPercentage = progress?.total_chats
 			? Math.round((progress.chats_processed / progress.total_chats) * 100)
 			: 0;

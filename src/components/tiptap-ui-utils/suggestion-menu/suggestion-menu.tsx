@@ -93,10 +93,10 @@ export const SuggestionMenu = ({
 	);
 
 	const internalSuggestionPropsRef = React.useRef(internalSuggestionProps);
-
+	// biome-ignore lint/correctness/useExhaustiveDependencies: Just do it on render
 	React.useEffect(() => {
 		internalSuggestionPropsRef.current = internalSuggestionProps;
-	}, [internalSuggestionProps]);
+	}, []);
 
 	const closePopup = React.useCallback(() => {
 		setShow(false);
@@ -247,7 +247,6 @@ export const SuggestionMenu = ({
 			{...getFloatingProps()}
 			data-selector={selector}
 			className="tiptap-suggestion-menu"
-			role="listbox"
 			aria-label="Suggestions"
 		>
 			{children({

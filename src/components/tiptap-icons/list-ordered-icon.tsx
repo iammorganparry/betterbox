@@ -10,8 +10,10 @@ export const ListOrderedIcon = React.memo(
 				viewBox="0 0 24 24"
 				fill="currentColor"
 				xmlns="http://www.w3.org/2000/svg"
+				aria-label="List Ordered"
 				{...props}
 			>
+				<title>List Ordered</title>
 				<path
 					fillRule="evenodd"
 					clipRule="evenodd"

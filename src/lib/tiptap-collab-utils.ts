@@ -93,17 +93,17 @@ export const isSelectionValid = (
 	selection?: Selection,
 	excludedNodeTypes: string[] = ["imageUpload", "horizontalRule"],
 ): boolean => {
-	if (!editor) return false;
-	if (!selection) selection = editor.state.selection;
+	const internalSelection = selection ?? editor?.state.selection;
+	if (!editor || !internalSelection) return false;
 
 	const { state } = editor;
 	const { doc } = state;
-	const { empty, from, to } = selection;
+	const { empty, from, to } = internalSelection;
 
 	const isEmptyTextBlock =
 		!doc.textBetween(from, to).length && isTextSelection(selection);
 	const isCodeBlock =
-		selection.$from.parent.type.spec.code ||
+		internalSelection.$from.parent.type.spec.code ||
 		(isNodeSelection(selection) && selection.node.type.spec.code);
 	const isExcludedNode =
 		isNodeSelection(selection) &&

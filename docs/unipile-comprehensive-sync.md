@@ -72,6 +72,69 @@ Existing webhook handlers remain functional for real-time updates:
 - Account status changes
 - Profile view tracking
 
+### Company Page Message Filtering
+
+**⚠️ Important**: By default, the system now filters out LinkedIn Company Page messages to focus on personal inbox content only.
+
+The sync system automatically detects and filters company page messages based on:
+
+- **Sender URN pattern**: Messages from `urn:li:organization:*` identifiers
+- **Attendee types**: Messages where participants have `attendee_type: "organization"`
+- **Group composition**: Group chats where more than half the participants are organizations
+
+#### Filtering Behavior
+
+**Historical Sync**: Company chats are skipped entirely during the sync process. This includes:
+- No chat records created for company conversations
+- No messages synced from company chats
+- No attendees processed for company participants
+- Metrics tracked showing skipped company content
+
+**Real-time Messages**: Company page messages received via webhooks are filtered early and not persisted to the database.
+
+#### Configuration
+
+The filtering behavior is controlled by the `includeCompanyMessages` flag in `src/config/sync.config.ts`:
+
+```typescript
+// Default: only personal messages
+includeCompanyMessages: false
+
+// To include company messages (for debugging/special cases):
+includeCompanyMessages: true
+```
+
+#### Monitoring
+
+Both sync processes track and log company message filtering:
+
+```typescript
+// Historical sync includes company skip metrics
+{
+  totalChatsProcessed: 150,
+  totalMessagesProcessed: 3420,
+  skippedCompanyChats: 25,      // New: company chats filtered
+  skippedCompanyMessages: 180   // New: company messages filtered
+}
+
+// Real-time filtering logs
+console.log('🚫 Company-page message ignored:', {
+  messageId: 'msg_123',
+  senderType: 'organization',
+  reason: 'company_page_message'
+});
+```
+
+#### Technical Implementation
+
+The filtering logic is implemented in helper functions:
+
+- `isOrganizationUrn(urn)`: Detects organization URN patterns
+- `isCompanyAttendee(attendee)`: Identifies company attendees
+- `isCompanyMessage(data)`: Main filtering decision logic
+
+These functions respect the configuration flag and can be disabled for development or specific use cases.
+
 ## Usage Examples
 
 ### Basic Service Usage

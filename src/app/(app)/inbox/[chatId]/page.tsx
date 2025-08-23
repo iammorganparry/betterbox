@@ -61,12 +61,12 @@ interface ChatAttendee {
 interface MessageAttachment {
 	id: string;
 	attachment_type:
-	| "img"
-	| "video"
-	| "audio"
-	| "file"
-	| "linkedin_post"
-	| "video_meeting";
+		| "img"
+		| "video"
+		| "audio"
+		| "file"
+		| "linkedin_post"
+		| "video_meeting";
 	url?: string | null;
 	filename?: string | null;
 	file_size?: number | null;
@@ -125,8 +125,8 @@ function MessageAttachments({
 											maxHeight: "300px",
 											...(attachment.width &&
 												attachment.height && {
-												aspectRatio: `${attachment.width} / ${attachment.height}`,
-											}),
+													aspectRatio: `${attachment.width} / ${attachment.height}`,
+												}),
 										}}
 										onError={(e) => {
 											e.currentTarget.style.display = "none";
@@ -137,16 +137,17 @@ function MessageAttachments({
 									/>
 								) : attachment.content ? (
 									<img
-										src={`data:${attachment.mime_type || "image/jpeg"};base64,${attachment.content
-											}`}
+										src={`data:${attachment.mime_type || "image/jpeg"};base64,${
+											attachment.content
+										}`}
 										alt={attachment.filename || "Image"}
 										className="h-auto w-full object-cover"
 										style={{
 											maxHeight: "300px",
 											...(attachment.width &&
 												attachment.height && {
-												aspectRatio: `${attachment.width} / ${attachment.height}`,
-											}),
+													aspectRatio: `${attachment.width} / ${attachment.height}`,
+												}),
 										}}
 										onError={(e) => {
 											e.currentTarget.style.display = "none";
@@ -164,8 +165,8 @@ function MessageAttachments({
 											maxHeight: "300px",
 											...(attachment.width &&
 												attachment.height && {
-												aspectRatio: `${attachment.width} / ${attachment.height}`,
-											}),
+													aspectRatio: `${attachment.width} / ${attachment.height}`,
+												}),
 										}}
 										onError={(e) => {
 											e.currentTarget.style.display = "none";
@@ -216,8 +217,9 @@ function MessageAttachments({
 										style={{ maxHeight: "300px" }}
 									>
 										<source
-											src={`data:${attachment.mime_type || "video/mp4"
-												};base64,${attachment.content}`}
+											src={`data:${
+												attachment.mime_type || "video/mp4"
+											};base64,${attachment.content}`}
 											type={attachment.mime_type || "video/mp4"}
 										/>
 										<track
@@ -281,8 +283,9 @@ function MessageAttachments({
 								) : attachment.content ? (
 									<audio controls className="w-full">
 										<source
-											src={`data:${attachment.mime_type || "audio/mpeg"
-												};base64,${attachment.content}`}
+											src={`data:${
+												attachment.mime_type || "audio/mpeg"
+											};base64,${attachment.content}`}
 											type={attachment.mime_type || "audio/mpeg"}
 										/>
 										<track
@@ -645,10 +648,11 @@ export default function ChatPage() {
 									return (
 										<div key={message.id} className="group">
 											<div
-												className={`flex items-start gap-3 ${message.is_outgoing
+												className={`flex items-start gap-3 ${
+													message.is_outgoing
 														? "flex-row-reverse justify-end"
 														: "justify-start"
-													}`}
+												}`}
 											>
 												<Avatar className="mt-1 h-8 w-8 flex-shrink-0">
 													<AvatarImage
@@ -656,27 +660,30 @@ export default function ChatPage() {
 														alt={displayName}
 													/>
 													<AvatarFallback
-														className={`text-xs ${message.is_outgoing
+														className={`text-xs ${
+															message.is_outgoing
 																? "bg-primary text-primary-foreground"
 																: "bg-muted text-muted-foreground"
-															}`}
+														}`}
 													>
 														{message.is_outgoing
 															? "You"
 															: displayName
-																.split(" ")
-																.map((n) => n[0])
-																.join("")}
+																	.split(" ")
+																	.map((n) => n[0])
+																	.join("")}
 													</AvatarFallback>
 												</Avatar>
 
 												<div
-													className={`min-w-0 flex-1 ${message.is_outgoing ? "flex flex-col items-end" : ""
-														}`}
+													className={`min-w-0 flex-1 ${
+														message.is_outgoing ? "flex flex-col items-end" : ""
+													}`}
 												>
 													<div
-														className={`mb-1 flex items-baseline gap-2 ${message.is_outgoing ? "flex-row-reverse" : ""
-															}`}
+														className={`mb-1 flex items-baseline gap-2 ${
+															message.is_outgoing ? "flex-row-reverse" : ""
+														}`}
 													>
 														<span className="font-medium text-foreground text-sm">
 															{message.is_outgoing ? "You" : displayName}
@@ -693,14 +700,15 @@ export default function ChatPage() {
 
 													<div className="inline-block max-w-xs sm:max-w-md lg:max-w-lg">
 														<div
-															className={`inline-block rounded-lg p-3 ${message.is_outgoing
+															className={`inline-block rounded-lg p-3 ${
+																message.is_outgoing
 																	? message.isFailed
 																		? "bg-red-500 text-white"
 																		: message.isOptimistic
 																			? "bg-primary/70 text-primary-foreground"
 																			: "bg-primary text-primary-foreground"
 																	: "bg-accent/50"
-																}`}
+															}`}
 														>
 															{message.content && (
 																<p className="leading-relaxed">
@@ -714,18 +722,18 @@ export default function ChatPage() {
 																	unipileMessageAttachments?: MessageAttachment[];
 																}
 															).unipileMessageAttachments && (
-																	<div className="mt-2">
-																		<MessageAttachments
-																			attachments={
-																				(
-																					message as Message & {
-																						unipileMessageAttachments: MessageAttachment[];
-																					}
-																				).unipileMessageAttachments
-																			}
-																		/>
-																	</div>
-																)}
+																<div className="mt-2">
+																	<MessageAttachments
+																		attachments={
+																			(
+																				message as Message & {
+																					unipileMessageAttachments: MessageAttachment[];
+																				}
+																			).unipileMessageAttachments
+																		}
+																	/>
+																</div>
+															)}
 
 															{message.isFailed && (
 																<div className="mt-2 flex items-center gap-2 text-white/80 text-xs">

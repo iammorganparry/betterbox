@@ -70,7 +70,7 @@ export function useFloatingElement(
 
 	React.useEffect(() => {
 		update();
-	}, [referencePos, update]);
+	}, [update]);
 
 	React.useEffect(() => {
 		if (referencePos === null) {

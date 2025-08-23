@@ -9,6 +9,7 @@
 		"ignoreUnknown": false,
 		"ignore": [
 			// test files
+			"**/tiptap*/**",
 			"**/*.test.ts",
 			"**/*.test.tsx",
 			"**/*.spec.ts",

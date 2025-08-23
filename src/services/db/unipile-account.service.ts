@@ -416,6 +416,8 @@ export class UnipileAccountService {
 			chats_processed?: number;
 			messages_processed?: number;
 			attendees_processed?: number;
+			skipped_company_chats?: number;
+			skipped_company_messages?: number;
 			total_chats?: number;
 			current_step?: string;
 		},
@@ -425,7 +427,7 @@ export class UnipileAccountService {
 			accountId,
 			provider,
 		);
-		const currentProgress = (currentAccount?.sync_progress as any) || {};
+		const currentProgress = currentAccount?.sync_progress || {};
 
 		const updatedProgress = {
 			...currentProgress,
@@ -464,6 +466,8 @@ export class UnipileAccountService {
 			total_chats_processed: number;
 			total_messages_processed: number;
 			total_attendees_processed: number;
+			skipped_company_chats?: number;
+			skipped_company_messages?: number;
 		},
 	): Promise<UnipileAccount> {
 		const result = await this.drizzleDb
@@ -535,18 +539,7 @@ export class UnipileAccountService {
 	/**
 	 * Get sync status for user's accounts
 	 */
-	async getSyncStatus(userId: string): Promise<
-		Array<{
-			account_id: string;
-			provider: string;
-			status: string;
-			sync_status: string | null;
-			sync_progress: any;
-			sync_started_at: Date | null;
-			sync_completed_at: Date | null;
-			sync_error: string | null;
-		}>
-	> {
+	async getSyncStatus(userId: string) {
 		return await this.drizzleDb
 			.select({
 				account_id: unipileAccounts.account_id,

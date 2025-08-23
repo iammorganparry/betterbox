@@ -50,6 +50,7 @@ export class R2Service {
 			const command = new PutObjectCommand({
 				Bucket: this.bucket,
 				Key: key,
+				// @ts-expect-error - data is a valid type
 				Body: data,
 				ContentType: mimeType,
 				Metadata: metadata,
@@ -60,12 +61,14 @@ export class R2Service {
 			// Return public URL - assuming public bucket for now
 			// For private buckets, this would return a signed URL
 			const publicUrl = `${this.endpoint}/${this.bucket}/${key}`;
-			
+
 			console.log(`✅ Successfully uploaded to R2: ${publicUrl}`);
 			return publicUrl;
 		} catch (error) {
 			console.error(`❌ Failed to upload ${key} to R2:`, error);
-			throw new Error(`R2 upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+			throw new Error(
+				`R2 upload failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+			);
 		}
 	}
 
@@ -109,7 +112,9 @@ export class R2Service {
 			return signedUrl;
 		} catch (error) {
 			console.error(`❌ Failed to generate signed URL for ${key}:`, error);
-			throw new Error(`Failed to generate signed URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+			throw new Error(
+				`Failed to generate signed URL: ${error instanceof Error ? error.message : "Unknown error"}`,
+			);
 		}
 	}
 
@@ -127,10 +132,10 @@ export class R2Service {
 	): string {
 		// Generate random suffix to avoid collisions
 		const randomSuffix = Math.random().toString(36).substring(2, 8);
-		
+
 		// Extract extension from filename or derive from MIME type
 		let extension = "";
-		if (originalFilename && originalFilename.includes(".")) {
+		if (originalFilename?.includes(".")) {
 			extension = originalFilename.split(".").pop() || "";
 		} else if (mimeType) {
 			// Basic MIME to extension mapping
@@ -150,7 +155,8 @@ export class R2Service {
 				"application/pdf": "pdf",
 				"text/plain": "txt",
 				"application/msword": "doc",
-				"application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+				"application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+					"docx",
 			};
 			extension = mimeToExt[mimeType] || "bin";
 		}

@@ -65,7 +65,7 @@ export function canInsertMention(
 	if (isNodeTypeSelected(editor, ["image"])) return false;
 
 	if (node || isValidPosition(nodePos)) {
-		if (isValidPosition(nodePos) && nodePos! >= 0) return true;
+		if (isValidPosition(nodePos) && nodePos >= 0) return true;
 
 		if (node) {
 			const foundPos = findNodePosition({ editor, node });

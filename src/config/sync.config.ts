@@ -48,6 +48,8 @@ export interface SyncConfig {
 	enableDetailedLogging: boolean;
 	/** Enable profile enrichment (requires Unipile API credentials) */
 	enableProfileEnrichment: boolean;
+	/** Include company page messages in sync (default false - only personal messages) */
+	includeCompanyMessages: boolean;
 }
 
 /**
@@ -84,6 +86,7 @@ export const SYNC_CONFIG: SyncConfig = {
 	enableProfileEnrichment: !!(
 		process.env.UNIPILE_API_KEY && process.env.UNIPILE_DSN
 	),
+	includeCompanyMessages: false, // Default to personal messages only
 };
 
 /**
@@ -100,6 +103,7 @@ export function getCurrentSyncConfig() {
 		environment: isDevelopment ? "development" : "production",
 		enableDetailedLogging: SYNC_CONFIG.enableDetailedLogging,
 		enableProfileEnrichment: SYNC_CONFIG.enableProfileEnrichment,
+		includeCompanyMessages: SYNC_CONFIG.includeCompanyMessages,
 	};
 }
 
@@ -164,6 +168,7 @@ export function logSyncConfig() {
 			features: {
 				profileEnrichment: config.enableProfileEnrichment,
 				detailedLogging: config.enableDetailedLogging,
+				includeCompanyMessages: config.includeCompanyMessages,
 			},
 		});
 	}

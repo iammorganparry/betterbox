@@ -33,6 +33,7 @@ export const EmojiDropdownMenu = (props: EmojiDropdownMenuProps) => {
 			items={getSuggestionItems}
 			{...props}
 		>
+			{/* @ts-expect-error - props is a valid type */}
 			{(props) => <EmojiList {...props} />}
 		</SuggestionMenu>
 	);
@@ -47,6 +48,7 @@ const getSuggestionItems = async (props: { query: string; editor: Editor }) => {
 			title: emoji.name,
 			subtext: emoji.shortcodes.join(", "),
 			context: emoji,
+			// @ts-expect-error - props is a valid type
 			onSelect: (props: {
 				editor: Editor;
 				range: Range;

@@ -1,4 +1,5 @@
 import {
+	type SQL,
 	and,
 	asc,
 	count,
@@ -22,6 +23,8 @@ import {
 	unipileMessages,
 	type users,
 } from "~/db/schema";
+import type { createR2Service } from "../r2/r2.service";
+import type { createUnipileService } from "../unipile/unipile.service";
 
 // Use Drizzle's inferred types
 export type UnipileMessage = typeof unipileMessages.$inferSelect;
@@ -147,10 +150,8 @@ export class UnipileMessageService {
 	/**
 	 * Get messages for a specific chat
 	 */
-	async getMessagesByChat(
-		chatId: string,
-		options: FindMessagesOptions = {},
-	): Promise<any[]> { // Return any[] to allow for extended types with attachments
+	async getMessagesByChat(chatId: string, options: FindMessagesOptions = {}) {
+		// Return any[] to allow for extended types with attachments
 		const {
 			include_attachments = false,
 			include_chat = false,
@@ -167,7 +168,7 @@ export class UnipileMessageService {
 
 		if (include_attachments) {
 			// Use relational query when attachments are needed
-			const conditions: any[] = [eq(unipileMessages.chat_id, chatId)];
+			const conditions: SQL[] = [eq(unipileMessages.chat_id, chatId)];
 
 			if (!include_deleted) {
 				conditions.push(eq(unipileMessages.is_deleted, false));
@@ -192,9 +193,10 @@ export class UnipileMessageService {
 						where: eq(unipileMessageAttachments.is_deleted, false),
 					},
 				},
-				orderBy: order_direction === "desc"
-					? desc(unipileMessages[order_by])
-					: asc(unipileMessages[order_by]),
+				orderBy:
+					order_direction === "desc"
+						? desc(unipileMessages[order_by])
+						: asc(unipileMessages[order_by]),
 				limit: limit ?? 100,
 				offset: offset ?? 0,
 			});
@@ -221,17 +223,20 @@ export class UnipileMessageService {
 			conditions.push(eq(unipileMessages.is_read, is_read));
 		}
 
-		const results = await this.drizzleDb
-			.select()
-			.from(unipileMessages)
-			.where(and(...conditions))
-			.orderBy(
+		const results = await this.drizzleDb.query.unipileMessages.findMany({
+			where: () => and(...conditions),
+			with: {
+				unipileMessageAttachments: {
+					where: eq(unipileMessageAttachments.is_deleted, false),
+				},
+			},
+			orderBy:
 				order_direction === "desc"
 					? desc(unipileMessages[order_by])
 					: asc(unipileMessages[order_by]),
-			)
-			.limit(limit ?? 100)
-			.offset(offset ?? 0);
+			limit: limit ?? 100,
+			offset: offset ?? 0,
+		});
 
 		return results;
 	}
@@ -840,8 +845,8 @@ export class UnipileMessageService {
 	async ensureAttachmentAvailable(
 		attachment: UnipileMessageAttachment,
 		unipileAccountId: string,
-		unipileService: any, // Service injected from context
-		r2Service: any, // Service injected from context
+		unipileService: ReturnType<typeof createUnipileService>,
+		r2Service: ReturnType<typeof createR2Service>,
 	): Promise<UnipileMessageAttachment> {
 		// If we have a valid R2 URL, use it (R2 URLs don't expire)
 		if (attachment.r2_url && !attachment.unavailable) {
@@ -850,18 +855,23 @@ export class UnipileMessageService {
 		}
 
 		// Check if Unipile URL needs refreshing
-		const unipileNeedsRefresh = 
-			attachment.unavailable || 
-			!attachment.url || 
-			(attachment.url_expires_at && attachment.url_expires_at < BigInt(Date.now() + 5 * 60 * 1000)); // Expires within 5 minutes
+		const unipileNeedsRefresh =
+			attachment.unavailable ||
+			!attachment.url ||
+			(attachment.url_expires_at &&
+				attachment.url_expires_at < BigInt(Date.now() + 5 * 60 * 1000)); // Expires within 5 minutes
 
 		// If we have valid Unipile URL and no R2, still use Unipile for now
 		if (!unipileNeedsRefresh && !attachment.r2_url) {
-			console.log(`✅ Using Unipile URL for attachment ${attachment.id} (no R2 available)`);
+			console.log(
+				`✅ Using Unipile URL for attachment ${attachment.id} (no R2 available)`,
+			);
 			return attachment;
 		}
 
-		console.log(`🔄 Refreshing attachment ${attachment.id} from Unipile and uploading to R2...`);
+		console.log(
+			`🔄 Refreshing attachment ${attachment.id} from Unipile and uploading to R2...`,
+		);
 
 		try {
 			// Get the message to find its external_id for the API call
@@ -886,19 +896,24 @@ export class UnipileMessageService {
 			// Upload to R2 if we have content and no R2 URL yet
 			let r2Key: string | undefined = attachment.r2_key ?? undefined;
 			let r2Url: string | undefined = attachment.r2_url ?? undefined;
-			let r2UploadedAt: Date | undefined = attachment.r2_uploaded_at ? new Date(attachment.r2_uploaded_at) : undefined;
+			let r2UploadedAt: Date | undefined = attachment.r2_uploaded_at
+				? new Date(attachment.r2_uploaded_at)
+				: undefined;
 
 			if (freshAttachment.content && !r2Url) {
 				try {
 					// Convert base64 to Uint8Array
-					const binaryData = Uint8Array.from(atob(freshAttachment.content), c => c.charCodeAt(0));
+					const binaryData = Uint8Array.from(
+						atob(freshAttachment.content),
+						(c) => c.charCodeAt(0),
+					);
 
 					// Generate R2 key if we don't have one
 					if (!r2Key) {
 						r2Key = r2Service.generateAttachmentKey(
 							attachment.message_id,
-							attachment.filename,
-							freshAttachment.mime_type || attachment.mime_type,
+							attachment.filename || "",
+							freshAttachment.mime_type || attachment.mime_type || "",
 						);
 					}
 
@@ -906,9 +921,11 @@ export class UnipileMessageService {
 					r2Url = await r2Service.upload(
 						r2Key,
 						binaryData,
-						freshAttachment.mime_type || attachment.mime_type || 'application/octet-stream',
+						freshAttachment.mime_type ||
+							attachment.mime_type ||
+							"application/octet-stream",
 						{
-							originalFilename: attachment.filename || 'attachment',
+							originalFilename: attachment.filename || "attachment",
 							messageId: attachment.message_id,
 							attachmentId: attachment.external_id,
 						},
@@ -916,9 +933,14 @@ export class UnipileMessageService {
 
 					r2UploadedAt = new Date();
 
-					console.log(`✅ Uploaded attachment ${attachment.id} to R2: ${r2Key}`);
+					console.log(
+						`✅ Uploaded attachment ${attachment.id} to R2: ${r2Key}`,
+					);
 				} catch (r2Error) {
-					console.warn(`⚠️ Failed to upload attachment ${attachment.id} to R2:`, r2Error);
+					console.warn(
+						`⚠️ Failed to upload attachment ${attachment.id} to R2:`,
+						r2Error,
+					);
 					// Continue without R2 - we'll still update with Unipile data
 				}
 			}
@@ -939,12 +961,16 @@ export class UnipileMessageService {
 				},
 			);
 
-			console.log(`✅ Refreshed attachment ${attachment.id} from Unipile${r2Url ? ' + uploaded to R2' : ''}`);
+			console.log(
+				`✅ Refreshed attachment ${attachment.id} from Unipile${r2Url ? " + uploaded to R2" : ""}`,
+			);
 			return updatedAttachment;
-
 		} catch (error) {
-			console.error(`❌ Failed to refresh attachment ${attachment.id} from Unipile:`, error);
-			
+			console.error(
+				`❌ Failed to refresh attachment ${attachment.id} from Unipile:`,
+				error,
+			);
+
 			// Mark as unavailable if we can't fetch it
 			if (!attachment.unavailable) {
 				try {
@@ -955,10 +981,13 @@ export class UnipileMessageService {
 					);
 					return updatedAttachment;
 				} catch (updateError) {
-					console.error(`❌ Failed to mark attachment ${attachment.id} as unavailable:`, updateError);
+					console.error(
+						`❌ Failed to mark attachment ${attachment.id} as unavailable:`,
+						updateError,
+					);
 				}
 			}
-			
+
 			return attachment;
 		}
 	}

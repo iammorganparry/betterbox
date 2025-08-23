@@ -398,6 +398,100 @@ export async function createEnrichedContactFromSender(
 	});
 }
 
+/**
+ * Helper function to check if a URN belongs to a LinkedIn organization/company
+ */
+export const isOrganizationUrn = (urn?: string): boolean => {
+	return /^urn:li:organization:/i.test(urn ?? "");
+};
+
+/**
+ * Helper function to check if an attendee is a company/organization
+ * Handles both webhook data format and API chat attendee format
+ */
+export const isCompanyAttendee = (attendee: {
+	// Webhook format
+	attendee_type?: string;
+	attendee_provider_id?: string;
+	// API chat attendee format
+	provider_id?: string;
+	specifics?: {
+		member_urn?: string;
+	};
+}): boolean => {
+	// Check webhook format first
+	if (attendee.attendee_type === "organization") {
+		return true;
+	}
+
+	// Check URNs from both formats
+	const urn =
+		attendee.attendee_provider_id ||
+		attendee.provider_id ||
+		attendee.specifics?.member_urn;
+
+	return isOrganizationUrn(urn);
+};
+
+/**
+ * Helper function to determine if a message/chat is from a company page
+ * Returns true if the message should be filtered out (company page message)
+ */
+export const isCompanyMessage = (data: {
+	sender?: {
+		// Webhook format
+		attendee_type?: string;
+		attendee_provider_id?: string;
+		// API format (if applicable)
+		provider_id?: string;
+		specifics?: {
+			member_urn?: string;
+		};
+	};
+	attendees?: Array<{
+		// Webhook format
+		attendee_type?: string;
+		attendee_provider_id?: string;
+		// API chat attendee format
+		provider_id?: string;
+		specifics?: {
+			member_urn?: string;
+		};
+	}>;
+	sender_urn?: string;
+	sender_id?: string;
+}): boolean => {
+	const syncConfig = getCurrentSyncConfig();
+
+	// If company messages are explicitly included, don't filter anything
+	if (syncConfig.includeCompanyMessages) {
+		return false;
+	}
+
+	// Check sender
+	if (data.sender) {
+		if (isCompanyAttendee(data.sender)) {
+			return true;
+		}
+	}
+
+	// Check sender_urn or sender_id for organization URN
+	if (isOrganizationUrn(data.sender_urn) || isOrganizationUrn(data.sender_id)) {
+		return true;
+	}
+
+	// Check if ALL attendees are organization attendees (indicates company group chat)
+	if (data.attendees && data.attendees.length > 0) {
+		const organizationAttendees = data.attendees.filter(isCompanyAttendee);
+		// If more than half the attendees are organizations, consider it a company chat
+		if (organizationAttendees.length > data.attendees.length / 2) {
+			return true;
+		}
+	}
+
+	return false;
+};
+
 // Re-export commonly used types and functions
 export {
 	createUnipileService,

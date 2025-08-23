@@ -3,7 +3,6 @@ import { z } from "zod";
 import { env } from "~/env";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
-
 export const inboxRouter = createTRPCRouter({
 	/**
 	 * Get user's chats/conversations
@@ -98,44 +97,52 @@ export const inboxRouter = createTRPCRouter({
 							return message;
 						}
 
-						console.log(`🔍 Checking ${message.unipileMessageAttachments.length} attachments for message ${message.id}`);
+						console.log(
+							`🔍 Checking ${message.unipileMessageAttachments.length} attachments for message ${message.id}`,
+						);
 
 						const validatedAttachments = await Promise.all(
-							message.unipileMessageAttachments.map(async (attachment: any) => {
+							message.unipileMessageAttachments.map(async (attachment) => {
 								try {
-									const validatedAttachment = await ctx.services.unipileMessageService.ensureAttachmentAvailable(
-										attachment,
-										chatDetails.unipileAccount.account_id,
-										ctx.services.unipileService,
-										ctx.services.r2Service,
-									);
+									const validatedAttachment =
+										await ctx.services.unipileMessageService.ensureAttachmentAvailable(
+											attachment,
+											chatDetails.unipileAccount.account_id,
+											ctx.services.unipileService,
+											ctx.services.r2Service,
+										);
 
 									// Log which URL source we're using for debugging
-									const urlSource = validatedAttachment.r2_url 
-										? 'R2' 
-										: validatedAttachment.url 
-											? 'Unipile' 
-											: validatedAttachment.content 
-												? 'Base64' 
-												: 'None';
-									
-									if (urlSource !== 'None') {
-										console.log(`📎 Attachment ${attachment.id} using ${urlSource} source`);
+									const urlSource = validatedAttachment.r2_url
+										? "R2"
+										: validatedAttachment.url
+											? "Unipile"
+											: validatedAttachment.content
+												? "Base64"
+												: "None";
+
+									if (urlSource !== "None") {
+										console.log(
+											`📎 Attachment ${attachment.id} using ${urlSource} source`,
+										);
 									}
 
 									return validatedAttachment;
 								} catch (error) {
-									console.error(`❌ Failed to validate attachment ${attachment.id}:`, error);
+									console.error(
+										`❌ Failed to validate attachment ${attachment.id}:`,
+										error,
+									);
 									return attachment; // Return original attachment if validation fails
 								}
-							})
+							}),
 						);
 
 						return {
 							...message,
 							unipileMessageAttachments: validatedAttachments,
 						};
-					})
+					}),
 				);
 
 				// Reverse to show chronologically (oldest at top, newest at bottom)
@@ -548,7 +555,9 @@ export const inboxRouter = createTRPCRouter({
 
 				if (input.attachments?.length) {
 					const r2Service = ctx.services.r2Service;
-					console.log(`📤 Uploading ${input.attachments.length} attachments to R2...`);
+					console.log(
+						`📤 Uploading ${input.attachments.length} attachments to R2...`,
+					);
 
 					attachmentsWithR2 = await Promise.all(
 						input.attachments.map(async (attachment, index) => {
@@ -558,9 +567,11 @@ export const inboxRouter = createTRPCRouter({
 									const base64Data = attachment.data.includes(",")
 										? attachment.data.split(",")[1] || attachment.data
 										: attachment.data;
-									
-									const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-									
+
+									const binaryData = Uint8Array.from(atob(base64Data), (c) =>
+										c.charCodeAt(0),
+									);
+
 									// Generate unique R2 key
 									const r2Key = r2Service.generateAttachmentKey(
 										`temp-${Date.now()}`, // We'll update this with real message ID later
@@ -574,27 +585,33 @@ export const inboxRouter = createTRPCRouter({
 										binaryData,
 										attachment.type,
 										{
-											originalFilename: attachment.filename || `attachment-${index + 1}`,
+											originalFilename:
+												attachment.filename || `attachment-${index + 1}`,
 											messageId: "pending", // Will update after we get real message ID
 										},
 									);
 
-									console.log(`✅ Uploaded attachment ${index + 1} to R2: ${r2Key}`);
-									
+									console.log(
+										`✅ Uploaded attachment ${index + 1} to R2: ${r2Key}`,
+									);
+
 									return {
 										original: attachment,
 										r2Key,
 										r2Url,
 									};
 								}
-								
+
 								return { original: attachment };
 							} catch (error) {
-								console.error(`❌ Failed to upload attachment ${index + 1} to R2:`, error);
+								console.error(
+									`❌ Failed to upload attachment ${index + 1} to R2:`,
+									error,
+								);
 								// Continue without R2 upload - fallback to original flow
 								return { original: attachment };
 							}
-						})
+						}),
 					);
 				}
 
@@ -623,14 +640,19 @@ export const inboxRouter = createTRPCRouter({
 					let fullMessageDetails = null;
 					if (input.attachments?.length) {
 						try {
-							console.log("🔍 Fetching full message details from Unipile to get attachment URLs...");
+							console.log(
+								"🔍 Fetching full message details from Unipile to get attachment URLs...",
+							);
 							fullMessageDetails = await unipileService.getMessage(
 								sendMessageResponse.message_id,
 								chat.unipileAccount.account_id,
 							);
 							console.log("✅ Retrieved full message details from Unipile");
 						} catch (error) {
-							console.warn("⚠️ Failed to fetch full message details from Unipile:", error);
+							console.warn(
+								"⚠️ Failed to fetch full message details from Unipile:",
+								error,
+							);
 							// Continue without full details - we'll use fallback attachment handling
 						}
 					}
@@ -675,16 +697,25 @@ export const inboxRouter = createTRPCRouter({
 							const attachmentWithR2 = attachmentsWithR2[i];
 							const originalAttachment = attachmentWithR2?.original;
 							const unipileAttachment = unipileAttachments?.[i]; // Match by index
-							
+
 							if (!originalAttachment) continue;
 
 							// Use real Unipile attachment data if available, otherwise fall back to original
-							const attachmentExternalId = unipileAttachment?.id || `sent-${savedMessage.id}-${i}`;
-							const attachmentUrl = unipileAttachment?.url || originalAttachment.url;
-							const attachmentFilename = unipileAttachment?.filename || originalAttachment.filename || `attachment-${i + 1}`;
-							const attachmentMimeType = unipileAttachment?.mime_type || originalAttachment.type;
-							const attachmentSize = unipileAttachment?.file_size || unipileAttachment?.size;
-							const urlExpiresAt = unipileAttachment?.url_expires_at ? BigInt(unipileAttachment.url_expires_at) : undefined;
+							const attachmentExternalId =
+								unipileAttachment?.id || `sent-${savedMessage.id}-${i}`;
+							const attachmentUrl =
+								unipileAttachment?.url || originalAttachment.url;
+							const attachmentFilename =
+								unipileAttachment?.filename ||
+								originalAttachment.filename ||
+								`attachment-${i + 1}`;
+							const attachmentMimeType =
+								unipileAttachment?.mime_type || originalAttachment.type;
+							const attachmentSize =
+								unipileAttachment?.file_size || unipileAttachment?.size;
+							const urlExpiresAt = unipileAttachment?.url_expires_at
+								? BigInt(unipileAttachment.url_expires_at)
+								: undefined;
 
 							try {
 								await unipileMessageService.upsertAttachment(
@@ -693,27 +724,47 @@ export const inboxRouter = createTRPCRouter({
 									{
 										url: attachmentUrl,
 										filename: attachmentFilename,
-										file_size: typeof attachmentSize === 'object' ? attachmentSize.width * attachmentSize.height : attachmentSize || null,
+										file_size:
+											typeof attachmentSize === "object"
+												? attachmentSize.width * attachmentSize.height
+												: attachmentSize || null,
 										mime_type: attachmentMimeType,
-										content: (!attachmentUrl && !attachmentWithR2?.r2Url) ? originalAttachment.data : undefined, // Only store base64 if no URL and no R2
+										content:
+											!attachmentUrl && !attachmentWithR2?.r2Url
+												? originalAttachment.data
+												: undefined, // Only store base64 if no URL and no R2
 										unavailable: unipileAttachment?.unavailable || false,
 										url_expires_at: urlExpiresAt,
-																		width: typeof unipileAttachment?.size === 'object' ? unipileAttachment.size.width : undefined,
-								height: typeof unipileAttachment?.size === 'object' ? unipileAttachment.size.height : undefined,
+										width:
+											typeof unipileAttachment?.size === "object"
+												? unipileAttachment.size.width
+												: undefined,
+										height:
+											typeof unipileAttachment?.size === "object"
+												? unipileAttachment.size.height
+												: undefined,
 										duration: unipileAttachment?.duration,
 										sticker: unipileAttachment?.sticker || false,
 										gif: unipileAttachment?.gif || false,
 										voice_note: unipileAttachment?.voice_note || false,
-										starts_at: unipileAttachment?.starts_at ? BigInt(unipileAttachment.starts_at) : undefined,
-										expires_at: unipileAttachment?.expires_at ? BigInt(unipileAttachment.expires_at) : undefined,
+										starts_at: unipileAttachment?.starts_at
+											? BigInt(unipileAttachment.starts_at)
+											: undefined,
+										expires_at: unipileAttachment?.expires_at
+											? BigInt(unipileAttachment.expires_at)
+											: undefined,
 										time_range: unipileAttachment?.time_range,
 										// R2 fields
 										r2_key: attachmentWithR2?.r2Key,
 										r2_url: attachmentWithR2?.r2Url,
-										r2_uploaded_at: attachmentWithR2?.r2Url ? new Date() : undefined,
+										r2_uploaded_at: attachmentWithR2?.r2Url
+											? new Date()
+											: undefined,
 									},
 									{
-										attachment_type: originalAttachment.type.startsWith("image/")
+										attachment_type: originalAttachment.type.startsWith(
+											"image/",
+										)
 											? "img"
 											: originalAttachment.type.startsWith("video/")
 												? "video"
@@ -722,7 +773,9 @@ export const inboxRouter = createTRPCRouter({
 													: "file",
 									},
 								);
-								console.log(`✅ Saved attachment ${i + 1} for sent message with${unipileAttachment ? ' real' : ' fallback'} data${attachmentWithR2?.r2Url ? ' + R2' : ''}`);
+								console.log(
+									`✅ Saved attachment ${i + 1} for sent message with${unipileAttachment ? " real" : " fallback"} data${attachmentWithR2?.r2Url ? " + R2" : ""}`,
+								);
 							} catch (error) {
 								console.error(`❌ Failed to save attachment ${i + 1}:`, error);
 								// Don't throw - let the message send succeed even if attachment save fails

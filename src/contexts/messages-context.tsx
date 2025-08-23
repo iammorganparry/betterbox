@@ -38,9 +38,9 @@ export type MessagesAction =
 	| { type: "MERGE_MESSAGES"; payload: { chatId: string; messages: Message[] } }
 	| { type: "ADD_MESSAGE"; payload: { chatId: string; message: Message } }
 	| {
-		type: "UPDATE_MESSAGE";
-		payload: { chatId: string; messageId: string; updates: Partial<Message> };
-	}
+			type: "UPDATE_MESSAGE";
+			payload: { chatId: string; messageId: string; updates: Partial<Message> };
+	  }
 	| { type: "REMOVE_MESSAGE"; payload: { chatId: string; messageId: string } }
 	| { type: "SET_LOADING"; payload: { chatId: string; loading: boolean } }
 	| { type: "SET_ERROR"; payload: { chatId: string; error: string | null } }
@@ -96,10 +96,7 @@ function messagesReducer(
 			};
 
 			// Merge database messages with only failed messages (no optimistic ones)
-			const allMessages = [
-				...newMessages,
-				...failedMessages,
-			];
+			const allMessages = [...newMessages, ...failedMessages];
 			const processedMessages = processMessages(allMessages);
 
 			// Sort by sent_at to maintain chronological order
