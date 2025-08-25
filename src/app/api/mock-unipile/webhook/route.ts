@@ -1,10 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { inngest } from "~/services/inngest";
 
-// Check if mock mode is enabled
-const MOCK_ENABLED = process.env.USE_MOCK_UNIPILE === "1";
-
 export async function POST(request: NextRequest) {
+	// Check if mock mode is enabled (check at runtime for dynamic env vars)
+	const MOCK_ENABLED = process.env.USE_MOCK_UNIPILE === "1";
+
+	console.log("[Mock Webhook] Environment check:", {
+		USE_MOCK_UNIPILE: process.env.USE_MOCK_UNIPILE,
+		MOCK_ENABLED,
+	});
+
 	// Guard against accidental usage in production
 	if (!MOCK_ENABLED) {
 		console.warn(
@@ -76,6 +81,14 @@ export async function OPTIONS() {
 
 // Log any other methods for debugging
 export async function GET() {
+	// Check if mock mode is enabled (check at runtime for dynamic env vars)
+	const MOCK_ENABLED = process.env.USE_MOCK_UNIPILE === "1";
+
+	console.log("[Mock Webhook GET] Environment check:", {
+		USE_MOCK_UNIPILE: process.env.USE_MOCK_UNIPILE,
+		MOCK_ENABLED,
+	});
+
 	if (!MOCK_ENABLED) {
 		return NextResponse.json(
 			{ error: "Mock webhook not enabled" },

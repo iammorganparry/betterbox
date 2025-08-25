@@ -17,7 +17,13 @@ const WEBHOOK_CONFIG = {
 function messageToWebhookEvent(
   message: UnipileApiMessage,
   accountId: string,
-  provider: string = "LINKEDIN"
+  provider: string = "LINKEDIN",
+  senderInfo?: {
+    name?: string;
+    profile_url?: string;
+    provider_id?: string;
+  },
+  externalChatId?: string  // Override chat_id for webhook (use external chat ID)
 ): UnipileMessageReceivedEventData {
   return {
     account_id: accountId,
@@ -38,7 +44,7 @@ function messageToWebhookEvent(
     })) || [],
     attendees: [], // Will be populated by the handler if needed
     chat_content_type: null,
-    chat_id: message.chat_id,
+    chat_id: externalChatId || message.chat_id,
     event: "message_received",
     folder: ["INBOX"],
     is_event: message.is_event,
@@ -55,9 +61,9 @@ function messageToWebhookEvent(
     } : null,
     sender: {
       attendee_id: message.sender_attendee_id || "",
-      attendee_name: "Mock User",
-      attendee_profile_url: "https://linkedin.com/in/mockuser",
-      attendee_provider_id: message.sender_id,
+      attendee_name: senderInfo?.name || "Mock User",
+      attendee_profile_url: senderInfo?.profile_url || "https://linkedin.com/in/mockuser",
+      attendee_provider_id: senderInfo?.provider_id || message.sender_id,
     },
     subject: message.subject || null,
     timestamp: message.timestamp,
@@ -140,9 +146,15 @@ export const webhookDispatcher = {
   async messageReceived(
     message: UnipileApiMessage,
     accountId: string,
-    provider: string = "LINKEDIN"
+    provider: string = "LINKEDIN",
+    senderInfo?: {
+      name?: string;
+      profile_url?: string;
+      provider_id?: string;
+    },
+    externalChatId?: string
   ): Promise<boolean> {
-    const eventData = messageToWebhookEvent(message, accountId, provider);
+    const eventData = messageToWebhookEvent(message, accountId, provider, senderInfo, externalChatId);
     return dispatchWebhook("unipile/message_received", eventData);
   },
 

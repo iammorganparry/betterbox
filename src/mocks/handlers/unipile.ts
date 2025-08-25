@@ -477,19 +477,6 @@ export const unipileHandlers = [
 		});
 	}),
 
-	// Catch-all for unimplemented endpoints
-	http.all("*/api/*", ({ request }) => {
-		console.warn(
-			`[Mock Unipile] Unhandled request: ${request.method} ${request.url}`,
-		);
-
-		return HttpResponse.json(
-			{
-				error: "Endpoint not implemented in mock",
-				method: request.method,
-				url: request.url,
-			},
-			{ status: 501 },
-		);
-	}),
+	// Note: Removed overly broad catch-all handler to allow non-Unipile API requests to pass through
+	// MSW's onUnhandledRequest: "bypass" will handle unmatched requests
 ];

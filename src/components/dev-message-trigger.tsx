@@ -1,21 +1,21 @@
 "use client";
 
+import { Code, Loader2, MessageCircle, Send, X, Zap } from "lucide-react";
 import { useState } from "react";
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Badge } from "~/components/ui/badge";
-import { MessageCircle, Send, Loader2, Zap, Code, X } from "lucide-react";
 import { toast } from "sonner";
-import {
-  triggerIncomingMessageFromClient,
-  isDevelopment,
-} from "~/mocks/dev-triggers";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "~/components/ui/collapsible";
+import { Input } from "~/components/ui/input";
+import {
+  isDevelopment,
+  triggerIncomingMessageFromClient,
+} from "~/mocks/dev-triggers-client";
 
 interface DevMessageTriggerProps {
   chatId: string;

@@ -1,11 +1,6 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
-// Initialize mock server early in server environments
-if (typeof window === "undefined" && process.env.USE_MOCK_UNIPILE === "1") {
-	import("./mocks/init-server");
-}
-
 export const env = createEnv({
 	/**
 	 * Specify your server-side environment variables schema here. This way you can ensure the app

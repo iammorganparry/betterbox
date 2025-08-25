@@ -4,6 +4,7 @@ const isPublicRoute = createRouteMatcher([
 	"/sign-in(.*)",
 	"/sign-up(.*)",
 	"/api/inngest(.*)",
+	"/api/mock-unipile(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

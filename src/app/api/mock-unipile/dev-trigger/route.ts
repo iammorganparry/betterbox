@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
-	triggerMockIncomingMessage,
-	triggerMockConversationBurst,
 	DEV_TRIGGERS_ENABLED,
+	triggerMockConversationBurst,
+	triggerMockIncomingMessage,
 } from "~/mocks/dev-triggers";
 
 export async function POST(request: NextRequest) {

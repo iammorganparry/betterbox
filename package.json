@@ -27,7 +27,8 @@
 		"test:ui": "vitest --ui",
 		"test:mocks": "vitest run src/mocks/__tests__",
 		"test:mocks:watch": "vitest src/mocks/__tests__",
-		"prepare": "husky"
+		"prepare": "husky",
+		"inngest": "npx inngest-cli@latest dev"
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.864.0",
