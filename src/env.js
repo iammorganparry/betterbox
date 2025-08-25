@@ -1,6 +1,11 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
+// Initialize mock server early in server environments
+if (typeof window === "undefined" && process.env.USE_MOCK_UNIPILE === "1") {
+	import("./mocks/init-server");
+}
+
 export const env = createEnv({
 	/**
 	 * Specify your server-side environment variables schema here. This way you can ensure the app
@@ -15,6 +20,7 @@ export const env = createEnv({
 		UNIPILE_API_KEY: z.string().min(1),
 		UNIPILE_DSN: z.string().min(1),
 		UNIPILE_WEBHOOK_SECRET: z.string().optional(),
+		USE_MOCK_UNIPILE: z.string().optional(),
 		STRIPE_SECRET_KEY: z.string().min(1),
 		STRIPE_WEBHOOK_SECRET: z.string().optional(),
 		// Cloudflare R2 Storage
@@ -37,6 +43,7 @@ export const env = createEnv({
 		NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1),
 		NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL: z.string().optional(),
 		NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL: z.string().optional(),
+		NEXT_PUBLIC_USE_MOCK_UNIPILE: z.string().optional(),
 	},
 
 	/**
@@ -54,6 +61,7 @@ export const env = createEnv({
 		UNIPILE_API_KEY: process.env.UNIPILE_API_KEY,
 		UNIPILE_DSN: process.env.UNIPILE_DSN,
 		UNIPILE_WEBHOOK_SECRET: process.env.UNIPILE_WEBHOOK_SECRET,
+		USE_MOCK_UNIPILE: process.env.USE_MOCK_UNIPILE,
 		STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
 		STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
 		NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
@@ -70,6 +78,7 @@ export const env = createEnv({
 			process.env.NEXT_PUBLIC_STRIPE_STANDARD_PRODUCT_ID,
 		NEXT_PUBLIC_STRIPE_STARTER_PRODUCT_ID:
 			process.env.NEXT_PUBLIC_STRIPE_STARTER_PRODUCT_ID,
+		NEXT_PUBLIC_USE_MOCK_UNIPILE: process.env.NEXT_PUBLIC_USE_MOCK_UNIPILE,
 	},
 	/**
 	 * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

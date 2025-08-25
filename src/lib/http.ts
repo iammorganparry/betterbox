@@ -27,9 +27,21 @@ export function createUnipileClient(
 	apiKey: string,
 	dsn: string,
 ): AxiosInstance {
+	// Use localhost for mock mode, otherwise use the real Unipile API
+	const baseURL =
+		process.env.USE_MOCK_UNIPILE === "1"
+			? "http://localhost:3000/api/v1" // Mock endpoints will be intercepted by MSW
+			: `https://${dsn}/api/v1`;
+
+	if (process.env.USE_MOCK_UNIPILE === "1") {
+		console.log(
+			"[Unipile Client] Using mock mode - requests will be intercepted by MSW",
+		);
+	}
+
 	return axios.create({
 		...defaultConfig,
-		baseURL: `https://${dsn}/api/v1`,
+		baseURL,
 		headers: {
 			...defaultConfig.headers,
 			"X-API-KEY": apiKey,

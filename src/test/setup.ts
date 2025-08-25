@@ -1,7 +1,9 @@
 import "@testing-library/jest-dom";
+import { beforeAll, afterEach, afterAll, beforeEach, vi } from "vitest";
+import { server } from "~/mocks/server"; // Import MSW server
 
-// Mock Next.js router
-import { beforeEach, vi } from "vitest";
+vi.stubEnv("USE_MOCK_UNIPILE", "1"); // Set env var for tests
+export { server }; // Export server for test files to control
 
 vi.mock("next/navigation", () => ({
 	useRouter: () => ({
@@ -74,6 +76,10 @@ vi.mock("~/db", (req) => {
 		db: drizzleMock,
 	};
 });
+
+beforeAll(() => server.listen({ onUnhandledRequest: "bypass" }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 
 beforeEach(() => {
 	mockReset(drizzleMock);
